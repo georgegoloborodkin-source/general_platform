@@ -1,3 +1,4 @@
+/** Ingestion API client — uses Render backend in production; never same-origin/Vercel. */
 const ENV_CONVERTER_API_URL = import.meta.env.VITE_CONVERTER_API_URL as string | undefined;
 
 const RENDER_INGESTION_URL = "https://general-platform.onrender.com";
