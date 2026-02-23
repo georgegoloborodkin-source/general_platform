@@ -155,45 +155,62 @@
 
 @layer base {
   * {
-    @apply border-border;
+    border-color: hsl(var(--border));
   }
 
   body {
-    @apply bg-background text-foreground font-sans;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: "Plus Jakarta Sans", "Inter", sans-serif;
   }
 
   /* Table Styles */
   .data-table {
-    @apply border border-table-border rounded-lg overflow-hidden shadow-table;
+    border: 1px solid hsl(var(--table-border));
+    border-radius: 0.5rem;
+    overflow: hidden;
+    box-shadow: var(--shadow-table);
   }
   
   .data-table th {
-    @apply bg-table-header text-foreground font-semibold text-sm border-b border-table-border px-4 py-3 text-left;
+    background-color: hsl(var(--table-header));
+    color: hsl(var(--foreground));
+    font-weight: 600;
+    font-size: 0.875rem;
+    border-bottom: 1px solid hsl(var(--table-border));
+    padding: 0.75rem 1rem;
+    text-align: left;
   }
   
   .data-table td {
-    @apply border-b border-table-border px-4 py-3 text-sm;
+    border-bottom: 1px solid hsl(var(--table-border));
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
   }
   
   .data-table tr:hover {
-    @apply bg-table-row-hover;
+    background-color: hsl(var(--table-row-hover));
   }
 
   /* Status Badge Styles */
   .status-active {
-    @apply bg-status-active text-white;
+    background-color: hsl(var(--status-active));
+    color: white;
   }
   
   .status-pending {
-    @apply bg-status-pending text-white;
+    background-color: hsl(var(--status-pending));
+    color: white;
   }
   
   .status-inactive {
-    @apply bg-status-inactive text-white;
+    background-color: hsl(var(--status-inactive));
+    color: white;
   }
   
   .status-completed {
-    @apply bg-status-completed text-white;
+    background-color: hsl(var(--status-completed));
+    color: white;
   }
 
   /* Custom Gradient Backgrounds */
