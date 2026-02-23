@@ -1,39 +1,42 @@
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { useState } from "react";
-import RoleSelection from "./pages/RoleSelection";
-import CompanySetup from "./pages/CompanySetup";
+import { AuthProvider } from "@/hooks/useAuth";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
+import AuthCallback from "./pages/AuthCallback";
 
-export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [orgId, setOrgId] = useState<string | null>(null);
+const queryClient = new QueryClient();
 
-  if (!isLoggedIn) {
-    return (
-      <Login onLogin={(uid) => {
-        setUserId(uid);
-        setIsLoggedIn(true);
-      }} />
-    );
-  }
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <AuthProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <div className="app-shell cis-grid-bg cis-mesh-bg">
+            <Routes>
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute requireAuth>
+                    <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="/login" element={<Login />} />
+              <Route path="/auth/callback" element={<AuthCallback />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </div>
+        </BrowserRouter>
+      </AuthProvider>
+    </TooltipProvider>
+  </QueryClientProvider>
+);
 
-  if (!orgId) {
-    return (
-      <RoleSelection
-        userId={userId!}
-        onComplete={(oid) => setOrgId(oid)}
-      />
-    );
-  }
-
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Dashboard orgId={orgId} userId={userId!} />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
-  );
-}
+export default App;
