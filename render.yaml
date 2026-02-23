@@ -1,9 +1,10 @@
 services:
   - type: web
-    name: orbit-platform-api
+    name: general-platform
     runtime: python
     region: oregon
     plan: free
+    rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: python main.py
     envVars:
@@ -13,7 +14,17 @@ services:
         sync: false
       - key: SUPABASE_URL
         sync: false
-      - key: SUPABASE_SERVICE_KEY
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: VOYAGE_API_KEY
+        sync: false
+      - key: COHERE_API_KEY
+        sync: false
+      - key: EMBEDDINGS_PROVIDER
+        sync: false
+      - key: EMBEDDING_DIM
+        sync: false
+      - key: VOYAGE_EMBEDDING_MODEL
         sync: false
 
   - type: web

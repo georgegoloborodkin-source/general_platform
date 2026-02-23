@@ -1,7 +1,9 @@
 -- Orbit Platform: Company-agnostic intelligence system
 -- Initial schema: orgs, profiles, company context, documents, chat
+-- Run this in Supabase SQL Editor (Dashboard → SQL Editor → New query)
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "vector";
 
 -- Organizations: each company gets one
 CREATE TABLE IF NOT EXISTS organizations (

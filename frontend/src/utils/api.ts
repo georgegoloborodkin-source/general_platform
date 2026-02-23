@@ -2,7 +2,11 @@
  * API client for the Orbit Platform backend.
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:10000";
+const API_BASE =
+  import.meta.env.VITE_API_URL ||
+  (typeof window !== "undefined" && window.location.hostname !== "localhost"
+    ? "https://general-platform.onrender.com"
+    : "http://localhost:10000");
 
 export async function setupCompany(input: {
   organizationId: string;
