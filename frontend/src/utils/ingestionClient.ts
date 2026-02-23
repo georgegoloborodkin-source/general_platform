@@ -1,18 +1,20 @@
 const ENV_CONVERTER_API_URL = import.meta.env.VITE_CONVERTER_API_URL as string | undefined;
 
+const RENDER_INGESTION_URL = "https://general-platform.onrender.com";
+
 function getDefaultBackendUrl(): string {
   if (typeof window !== "undefined" && window.location?.hostname === "localhost") return "http://localhost:10000";
-  return "https://general-platform.onrender.com";
+  return RENDER_INGESTION_URL;
 }
 
+/** Ingestion/Drive API always uses Render (or localhost). Never use app origin to avoid 405 on Vercel. */
 function buildCandidateBaseUrls(): string[] {
+  if (typeof window !== "undefined" && window.location?.hostname !== "localhost") {
+    return [getDefaultBackendUrl()];
+  }
   if (ENV_CONVERTER_API_URL) {
     const url = ENV_CONVERTER_API_URL.trim();
-    // Never use the app's own origin as the API base (avoids 405 when deployed on Vercel)
-    if (typeof window !== "undefined" && window.location?.origin && url && (url === window.location.origin || url.startsWith(window.location.origin + "/"))) {
-      return [getDefaultBackendUrl()];
-    }
-    return [url];
+    if (url && url !== getDefaultBackendUrl() && (url === "http://localhost:10000" || url.startsWith("http://localhost"))) return [url];
   }
   return [getDefaultBackendUrl()];
 }
@@ -87,6 +89,11 @@ export async function warmUpIngestion(): Promise<void> {
 
 async function resolveIngestionBaseUrl(): Promise<string> {
   if (resolvedBaseUrl) return resolvedBaseUrl;
+
+  if (typeof window !== "undefined" && window.location?.hostname !== "localhost") {
+    resolvedBaseUrl = getDefaultBackendUrl();
+    return resolvedBaseUrl;
+  }
 
   const candidates = buildCandidateBaseUrls();
   if (!candidates.length) {
