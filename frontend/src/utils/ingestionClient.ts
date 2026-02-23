@@ -6,7 +6,14 @@ function getDefaultBackendUrl(): string {
 }
 
 function buildCandidateBaseUrls(): string[] {
-  if (ENV_CONVERTER_API_URL) return [ENV_CONVERTER_API_URL];
+  if (ENV_CONVERTER_API_URL) {
+    const url = ENV_CONVERTER_API_URL.trim();
+    // Never use the app's own origin as the API base (avoids 405 when deployed on Vercel)
+    if (typeof window !== "undefined" && window.location?.origin && url && (url === window.location.origin || url.startsWith(window.location.origin + "/"))) {
+      return [getDefaultBackendUrl()];
+    }
+    return [url];
+  }
   return [getDefaultBackendUrl()];
 }
 
