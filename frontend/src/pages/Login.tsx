@@ -1,56 +1,49 @@
-import { useState } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LoginButton } from "@/components/Auth/LoginButton";
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { Brain } from "lucide-react";
 
-interface Props {
-  onLogin: (userId: string) => void;
-}
+export default function Login() {
+  const navigate = useNavigate();
 
-export default function Login({ onLogin }: Props) {
-  const [email, setEmail] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleLogin = async () => {
-    if (!email.trim()) return;
-    setIsLoading(true);
-    // TODO: Integrate with Supabase Auth (Google OAuth, magic link, etc.)
-    // For now, simulate login
-    setTimeout(() => {
-      onLogin(crypto.randomUUID());
-      setIsLoading(false);
-    }, 500);
-  };
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        navigate("/");
+      }
+    };
+    checkSession();
+  }, [navigate]);
 
   return (
-    <div className="flex items-center justify-center min-h-screen p-4 bg-slate-950">
-      <div className="w-full max-w-md border border-slate-700/60 bg-slate-900/50 backdrop-blur-sm rounded-2xl shadow-xl shadow-black/20 overflow-hidden">
-        <div className="text-center border-b border-slate-700/60 bg-slate-800/30 px-6 py-8">
-          <div className="text-4xl font-black text-white tracking-tight mb-1">Orbit</div>
-          <div className="text-amber-400 font-medium text-sm tracking-wider uppercase">Platform</div>
-          <p className="text-slate-400 text-sm mt-3">
-            Intelligence system for any company
-          </p>
-        </div>
-        <div className="p-6 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-              placeholder="you@company.com"
-              className="w-full rounded-lg border border-slate-600 bg-slate-800/50 text-white placeholder:text-slate-500 px-4 py-3 text-sm focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 outline-none"
-            />
-          </div>
-          <button
-            onClick={handleLogin}
-            disabled={!email.trim() || isLoading}
-            className="w-full rounded-lg bg-amber-500 text-slate-950 hover:bg-amber-400 font-semibold h-11 shadow-[0_2px_12px_-2px_rgba(245,158,11,0.4)] disabled:opacity-50 transition-all"
-          >
-            {isLoading ? "Signing in..." : "Continue"}
-          </button>
-          <p className="text-center text-xs text-slate-500">
-            We'll connect Supabase Auth (Google, GitHub, etc.) here
-          </p>
+    <div className="min-h-screen bg-white flex flex-col cis-app">
+      <div className="fixed inset-0 cis-grid-bg cis-mesh-bg pointer-events-none" />
+      <div className="flex-1 flex items-center justify-center px-4 py-12 relative z-10">
+        <div className="w-full max-w-md">
+          <Card className="border border-slate-200 bg-white shadow-lg rounded-2xl overflow-hidden">
+            <CardHeader className="border-b border-slate-200 px-8 pt-8 pb-6">
+              <div className="flex items-center gap-4">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-600/15 text-blue-600">
+                  <Brain className="h-7 w-7" />
+                </div>
+                <div>
+                  <CardTitle className="text-2xl font-bold text-slate-900">Welcome</CardTitle>
+                  <CardDescription className="text-slate-500 text-sm mt-1">
+                    Sign in to access your team platform.
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-8 pb-8 px-8">
+              <LoginButton />
+              <p className="mt-6 text-center text-xs text-slate-500">
+                By signing in, you agree to our Terms of Service and Privacy Policy.
+              </p>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
