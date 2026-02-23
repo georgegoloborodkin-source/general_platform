@@ -21,6 +21,27 @@ function buildCandidateBaseUrls(): string[] {
 
 let resolvedBaseUrl: string | null = null;
 
+function normalizeIngestionBaseUrl(base: string): string {
+  const fallback = getDefaultBackendUrl();
+  if (!base) return fallback;
+  // Relative paths like "/api" should never be used for ingestion in production.
+  if (base.startsWith("/")) return fallback;
+  try {
+    const parsed = new URL(base);
+    const currentHost = typeof window !== "undefined" ? window.location?.host : "";
+    // Never call ingestion through Vercel preview/prod host or current app host.
+    if (
+      parsed.host === currentHost ||
+      parsed.hostname.endsWith(".vercel.app")
+    ) {
+      return fallback;
+    }
+    return parsed.origin + parsed.pathname.replace(/\/$/, "");
+  } catch {
+    return fallback;
+  }
+}
+
 async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = 800): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -91,7 +112,7 @@ async function resolveIngestionBaseUrl(): Promise<string> {
   if (resolvedBaseUrl) return resolvedBaseUrl;
 
   if (typeof window !== "undefined" && window.location?.hostname !== "localhost") {
-    resolvedBaseUrl = getDefaultBackendUrl();
+    resolvedBaseUrl = normalizeIngestionBaseUrl(getDefaultBackendUrl());
     return resolvedBaseUrl;
   }
 
@@ -105,15 +126,15 @@ async function resolveIngestionBaseUrl(): Promise<string> {
     try {
       const res = await fetchWithTimeout(`${base}/health`, undefined, 800);
       if (res.ok) {
-        resolvedBaseUrl = base;
-        return base;
+        resolvedBaseUrl = normalizeIngestionBaseUrl(base);
+        return resolvedBaseUrl;
       }
     } catch {
       // try next
     }
   }
 
-  resolvedBaseUrl = candidates[0];
+  resolvedBaseUrl = normalizeIngestionBaseUrl(candidates[0]);
   return resolvedBaseUrl;
 }
 
