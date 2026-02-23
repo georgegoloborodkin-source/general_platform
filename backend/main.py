@@ -643,18 +643,36 @@ def get_ollama_client():
         raise HTTPException(status_code=503, detail="ollama package not installed.")
     return ollama.Client(host=OLLAMA_HOST)
 
-# CORS — allow ALL origins (Vercel frontend → Render backend)
-# Using CORSMiddleware with explicit wildcard configuration
+# CORS — allow Vercel frontend (and localhost for dev)
+_CORS_ALLOWED = [
+    "https://general-platform.vercel.app",
+    "http://localhost:5174",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5174",
+]
+
+@app.middleware("http")
+async def add_cors_headers(request, call_next):
+    """Ensure CORS headers on every response so Vercel can call the API."""
+    origin = request.headers.get("origin", "")
+    response = await call_next(request)
+    if origin in _CORS_ALLOWED:
+        response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_CORS_ALLOWED,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
     max_age=86400,
 )
-print("🌐 CORS: allow_origins=['*'] — all origins permitted")
+print("🌐 CORS: allow general-platform.vercel.app + localhost")
 
 # Data models
 class StartupData(BaseModel):
