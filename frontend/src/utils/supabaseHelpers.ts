@@ -113,7 +113,7 @@ export async function ensureActiveEventForOrg(orgId: string): Promise<SupabaseRe
     .select("*")
     .eq("organization_id", orgId)
     .eq("status", "active")
-    .order("date", { ascending: false });
+    .order("created_at", { ascending: false });
 
   if (error) return { data: null, error };
   if (events && events.length > 0) return { data: events[0] as Event, error: null };
@@ -132,7 +132,7 @@ export async function getActiveEvents(organizationId: string) {
     .select("*")
     .eq("organization_id", organizationId)
     .eq("status", "active")
-    .order("date", { ascending: false });
+    .order("created_at", { ascending: false });
 }
 
 export async function getEvent(eventId: string) {
