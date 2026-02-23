@@ -41,6 +41,12 @@ cd frontend && npm install && npm run dev
 cd backend && pip install -r requirements.txt && python main.py
 ```
 
+## Deploying (Vercel)
+
+- **Connect Vercel to this repo:** `georgegoloborodkin-source/general_platform` (this repository).
+- **Root Directory:** set to `frontend` so Vercel builds the app (not the repo root). In Vercel: Project → Settings → General → Root Directory → `frontend`.
+- Pushes to `main` deploy from here; the backend runs on Render.
+
 ---
 
 ## Next steps to test the new platform
