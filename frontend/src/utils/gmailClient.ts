@@ -5,6 +5,11 @@
 
 const ENV_CONVERTER_API_URL = import.meta.env.VITE_CONVERTER_API_URL as string | undefined;
 
+function getDefaultBackendUrl(): string {
+  if (typeof window !== "undefined" && window.location?.hostname === "localhost") return "http://localhost:10000";
+  return "https://general-platform.onrender.com";
+}
+
 let resolvedBaseUrl: string | null = null;
 
 async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = 800): Promise<Response> {
@@ -53,14 +58,15 @@ async function fetchWithRetry(
 
 function buildCandidateBaseUrls(): string[] {
   if (ENV_CONVERTER_API_URL) return [ENV_CONVERTER_API_URL];
-  return [];
+  return [getDefaultBackendUrl()];
 }
 
 async function resolveBaseUrl(): Promise<string> {
   if (resolvedBaseUrl) return resolvedBaseUrl;
   const candidates = buildCandidateBaseUrls();
   if (!candidates.length) {
-    throw new Error("VITE_CONVERTER_API_URL is not set.");
+    resolvedBaseUrl = getDefaultBackendUrl();
+    return resolvedBaseUrl;
   }
   for (const base of candidates) {
     try {

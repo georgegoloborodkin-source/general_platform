@@ -11,7 +11,22 @@ import AuthCallback from "./pages/AuthCallback";
 
 const queryClient = new QueryClient();
 
-const App = () => (
+// If Supabase OAuth redirected to root (or another path) with tokens in the hash, send to callback so session is established
+function useOAuthHashRedirect() {
+  const hash = typeof window !== "undefined" ? window.location.hash : "";
+  const pathname = typeof window !== "undefined" ? window.location.pathname : "";
+  if (hash && hash.includes("access_token") && pathname !== "/auth/callback") {
+    window.location.replace("/auth/callback" + hash);
+    return true;
+  }
+  return false;
+}
+
+const App = () => {
+  const redirecting = useOAuthHashRedirect();
+  if (redirecting) return null;
+
+  return (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <AuthProvider>
@@ -37,6 +52,7 @@ const App = () => (
       </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>
-);
+  );
+};
 
 export default App;

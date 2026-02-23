@@ -1,9 +1,13 @@
 const ENV_CONVERTER_API_URL = import.meta.env.VITE_CONVERTER_API_URL as string | undefined;
-const GDRIVE_PROXY_BASE = "/api/gdrive";
+
+function getDefaultBackendUrl(): string {
+  if (typeof window !== "undefined" && window.location?.hostname === "localhost") return "http://localhost:10000";
+  return "https://general-platform.onrender.com";
+}
 
 function buildCandidateBaseUrls(): string[] {
   if (ENV_CONVERTER_API_URL) return [ENV_CONVERTER_API_URL];
-  return [];
+  return [getDefaultBackendUrl()];
 }
 
 let resolvedBaseUrl: string | null = null;
@@ -65,8 +69,9 @@ export function sleep(ms: number): Promise<void> {
 /** Wake up the Render service before bulk requests (fire-and-forget with retry) */
 export async function warmUpIngestion(): Promise<void> {
   try {
+    const base = await resolveIngestionBaseUrl();
     console.log("[DriveSync] Warming up ingestion service...");
-    await fetchWithRetry(`${GDRIVE_PROXY_BASE}/health`, { method: "GET" }, 3, 2000);
+    await fetchWithRetry(`${base}/health`, { method: "GET" }, 3, 2000);
     console.log("[DriveSync] Ingestion service is awake.");
   } catch {
     console.warn("[DriveSync] Warm-up failed — will retry on first real request.");
@@ -78,7 +83,8 @@ async function resolveIngestionBaseUrl(): Promise<string> {
 
   const candidates = buildCandidateBaseUrls();
   if (!candidates.length) {
-    throw new Error("VITE_CONVERTER_API_URL is not set. Configure it to use the Render converter.");
+    resolvedBaseUrl = getDefaultBackendUrl();
+    return resolvedBaseUrl;
   }
 
   for (const base of candidates) {
@@ -202,7 +208,8 @@ export async function listDriveFolders(
   folderId: string
 ): Promise<GDriveFolderEntry[]> {
   try {
-    const response = await fetchWithRetry(`${GDRIVE_PROXY_BASE}/list-folders`, {
+    const base = await resolveIngestionBaseUrl();
+    const response = await fetchWithRetry(`${base}/gdrive/list-folders`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ access_token: accessToken, folder_id: folderId }),
@@ -227,7 +234,8 @@ export async function listDriveFiles(
   folderId: string
 ): Promise<GDriveFileEntry[]> {
   try {
-    const response = await fetchWithRetry(`${GDRIVE_PROXY_BASE}/list-files`, {
+    const base = await resolveIngestionBaseUrl();
+    const response = await fetchWithRetry(`${base}/gdrive/list-files`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ access_token: accessToken, folder_id: folderId }),
@@ -254,7 +262,8 @@ export async function downloadDriveFile(
   fileName?: string
 ): Promise<{ title: string; content: string; raw_content: string; sourceType: string; mimeType: string }> {
   try {
-    const response = await fetchWithRetry(`${GDRIVE_PROXY_BASE}/download-file`, {
+    const base = await resolveIngestionBaseUrl();
+    const response = await fetchWithRetry(`${base}/gdrive/download-file`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

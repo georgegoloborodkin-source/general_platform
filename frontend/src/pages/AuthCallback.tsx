@@ -13,6 +13,38 @@ export default function AuthCallback() {
   useEffect(() => {
     const handleAuthCallback = async () => {
       try {
+        // Supabase redirects with tokens in the URL hash. Parse and set session so the user is stored.
+        const hash = window.location.hash;
+        if (hash) {
+          const params = new URLSearchParams(hash.replace(/^#/, ""));
+          const access_token = params.get("access_token");
+          const refresh_token = params.get("refresh_token");
+          if (access_token) {
+            const { data, error } = await supabase.auth.setSession({
+              access_token,
+              refresh_token: refresh_token || undefined,
+            });
+            if (error) throw error;
+            if (data?.session) {
+              window.history.replaceState(null, "", window.location.pathname);
+              const user = data.session.user;
+              const { error: profileError } = await supabase.from("user_profiles").select("id").eq("id", user.id).single();
+              if (profileError?.code === "PGRST116") {
+                await supabase.from("user_profiles").upsert({
+                  id: user.id,
+                  email: user.email,
+                  full_name: user.user_metadata?.full_name || user.user_metadata?.name || "",
+                  role: "team_member",
+                }, { onConflict: "id", ignoreDuplicates: true });
+              }
+              toast({ title: "Successfully signed in!", description: "Welcome to the platform." });
+              await new Promise((r) => setTimeout(r, 200));
+              navigate("/");
+              return;
+            }
+          }
+        }
+
         let session = null;
         let attempts = 0;
         const maxAttempts = 10;
