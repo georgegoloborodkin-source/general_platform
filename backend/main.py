@@ -7306,12 +7306,12 @@ async def auth_google_drive_callback(code: str, state: str):
 
 
 class GDriveMyTokenResponse(BaseModel):
-    access_token: str
+    access_token: Optional[str] = None  # null when Drive not connected (200 OK, no 404)
 
 
 @app.get("/gdrive/my-token", response_model=GDriveMyTokenResponse)
 async def gdrive_my_token(authorization: Optional[str] = Header(default=None)):
-    """Return Google access token for the current user (from Supabase JWT). Refreshes if expired."""
+    """Return Google access token for the current user (from Supabase JWT). Refreshes if expired. Returns access_token=null when not connected (200 OK)."""
     if not authorization or "Bearer " not in authorization:
         raise HTTPException(status_code=401, detail="Authorization: Bearer <supabase_access_token> required.")
     token = authorization.replace("Bearer ", "").strip()
@@ -7320,7 +7320,7 @@ async def gdrive_my_token(authorization: Optional[str] = Header(default=None)):
         raise HTTPException(status_code=401, detail="Could not get user id.")
     stored = _user_google_tokens.get(user_id)
     if not stored:
-        raise HTTPException(status_code=404, detail="Google Drive not connected. Use 'Add Google Drive folder' to connect.")
+        return GDriveMyTokenResponse(access_token=None)  # 200 OK, no 404 log spam
     access_token, refresh_token, expires_at = stored
     if refresh_token and time.time() > expires_at - 60:
         # Refresh
