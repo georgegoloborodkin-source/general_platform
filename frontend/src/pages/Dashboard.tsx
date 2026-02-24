@@ -188,7 +188,7 @@ import {
   type CompanyConnection,
 } from "@/utils/supabaseHelpers";
 import { convertFileWithAI, convertWithAI, askClaudeAnswerStream, askAgentStream, deleteRedundantCards, deleteAllCards, embedQuery, rerankDocuments, rewriteQueryWithLLM, generateMultiQueries, suggestConnections, contextualizeChunk, agenticChunk, graphragRetrieve, analyzeQuery, logRAGEval, extractEntities, extractCompanyProperties, orchestrateQuery, criticCheck, type AIConversionResponse, type AskFundConnection, type QueryAnalysis, type VerifiableSource, type SourceDoc } from "@/utils/aiConverter";
-import { getClickUpLists, ingestClickUpList, ingestGoogleDrive, listDriveFolders, listDriveFiles, downloadDriveFile, warmUpIngestion, sleep, refreshGoogleAccessToken, type GDriveFolderEntry, type GDriveFileEntry } from "@/utils/ingestionClient";
+import { getClickUpLists, ingestClickUpList, ingestGoogleDrive, listDriveFolders, listDriveFiles, downloadDriveFile, warmUpIngestion, sleep, refreshGoogleAccessToken, getGoogleAccessTokenFromBackend, type GDriveFolderEntry, type GDriveFileEntry } from "@/utils/ingestionClient";
 import { getStoredGoogleRefreshToken, getStoredGoogleAccessToken, setStoredGoogleAccessToken, saveGoogleProviderTokens } from "@/utils/googleAuthStorage";
 import { triggerGoogleOAuthForDrive } from "@/utils/googleOAuth";
 import { gmailListMessages, gmailIngestMessage, gmailDownloadAttachment, type GmailIngestResult } from "@/utils/gmailClient";
@@ -8448,27 +8448,29 @@ export default function Dashboard() {
       try {
         await supabase.auth.refreshSession();
       } catch {
-        // ignore; we'll still attempt to read any existing session token
+        // ignore
       }
     }
     const { data } = await supabase.auth.getSession();
     const session = data.session;
     const providerToken = session?.provider_token ?? null;
     const providerRefreshToken = session?.provider_refresh_token ?? null;
-
-    // When we have tokens from session, persist them for later (Supabase may not persist provider_*)
     if (providerToken || providerRefreshToken) {
       saveGoogleProviderTokens(providerToken, providerRefreshToken);
     }
 
-    // 1) Use session access token if present and not forcing refresh
-    if (providerToken && !forceRefresh) return providerToken;
+    // 1) Backend-stored token (from backend OAuth flow) — try first so "Add Google Drive folder" works without Supabase provider_token
+    if (session?.access_token) {
+      const backendToken = await getGoogleAccessTokenFromBackend(session.access_token);
+      if (backendToken) return backendToken;
+    }
 
-    // 2) Use stored access token if still valid (avoid hitting backend every time)
+    // 2) Session or stored provider token
+    if (providerToken && !forceRefresh) return providerToken;
     const storedAccess = getStoredGoogleAccessToken();
     if (storedAccess && !forceRefresh) return storedAccess;
 
-    // 3) Try refresh: session refresh_token first, then stored refresh_token
+    // 3) Refresh via backend
     const refreshToken = providerRefreshToken || getStoredGoogleRefreshToken();
     if (refreshToken) {
       const newToken = await refreshGoogleAccessToken(refreshToken);

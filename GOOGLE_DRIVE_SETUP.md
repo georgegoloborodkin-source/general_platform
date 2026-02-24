@@ -34,9 +34,9 @@ Without these scopes, Google will not grant Drive/Gmail access and the app will 
 - **Authorized JavaScript origins:**  
   `https://general-platform.vercel.app`  
   (no trailing slash)
-- **Authorized redirect URIs:**  
-  `https://slhovwkrqkmlnqcjtdfi.supabase.co/auth/v1/callback`  
-  (Supabase callback — keep this)
+- **Authorized redirect URIs** — add **both**:
+  - `https://slhovwkrqkmlnqcjtdfi.supabase.co/auth/v1/callback` (Supabase login)
+  - `https://general-platform.onrender.com/auth/google-drive/callback` (backend Drive flow — required for "Add Google Drive folder")
 
 ### API key (for Picker)
 
@@ -85,12 +85,17 @@ Redeploy after changing env vars.
 
 In the backend service → **Environment** → **Environment Variables**, set:
 
-| Name                   | Value                                |
-|------------------------|--------------------------------------|
-| `GOOGLE_CLIENT_ID`     | Same OAuth client ID as above       |
-| `GOOGLE_CLIENT_SECRET`| The **new** client secret you created |
+| Name                    | Value                                                                 |
+|-------------------------|-----------------------------------------------------------------------|
+| `GOOGLE_CLIENT_ID`      | Same OAuth client ID as above                                         |
+| `GOOGLE_CLIENT_SECRET`  | The **new** client secret you created                                |
+| `BACKEND_PUBLIC_URL`    | `https://general-platform.onrender.com` (optional; this is the default) |
 
 Save and redeploy the backend.
+
+**Important:** In Google Cloud Console, **Authorized redirect URIs** must include  
+`https://general-platform.onrender.com/auth/google-drive/callback`  
+so the backend can receive the OAuth callback and store your Drive token.
 
 ---
 

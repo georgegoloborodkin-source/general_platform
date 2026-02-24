@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 
 const PRODUCTION_ORIGIN = "https://general-platform.vercel.app";
+const BACKEND_ORIGIN = "https://general-platform.onrender.com";
 
 export function getGoogleOAuthRedirectTo(): string {
   if (typeof window !== "undefined" && window.location?.hostname === "localhost") {
@@ -10,24 +11,26 @@ export function getGoogleOAuthRedirectTo(): string {
 }
 
 /**
- * Trigger Google OAuth with Drive + Gmail scopes. Use when user needs to (re-)grant Google Drive access.
- * Redirects the page to Google; after consent, user returns to /auth/callback.
+ * Start backend-driven Google Drive OAuth: backend stores tokens and returns them via GET /gdrive/my-token.
+ * Redirects to backend -> Google -> back to frontend. No reliance on Supabase provider_token.
  */
 export async function triggerGoogleOAuthForDrive(): Promise<void> {
-  const redirectTo = getGoogleOAuthRedirectTo();
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo,
-      scopes: "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/gmail.readonly",
-      queryParams: {
-        access_type: "offline",
-        prompt: "consent",
-      },
-    },
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData?.session?.access_token;
+  if (!accessToken) {
+    throw new Error("You must be signed in. Sign in first, then connect Google Drive.");
+  }
+  const res = await fetch(`${BACKEND_ORIGIN}/auth/google-drive/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ access_token: accessToken }),
   });
-  if (error) throw error;
-  if (data?.url) {
-    window.location.href = data.url;
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Backend returned ${res.status}`);
+  }
+  const json = await res.json();
+  if (json.redirect_url) {
+    window.location.href = json.redirect_url;
   }
 }

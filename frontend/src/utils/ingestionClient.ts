@@ -224,6 +224,26 @@ export async function ingestGoogleDrive(
 
 // ─── Google Drive Folder-Sync Helpers ────────────────────────────────────────
 
+/**
+ * Get Google access token from backend (backend stores tokens after its own OAuth flow).
+ * Pass the current Supabase session access_token. Returns null if not connected or on error.
+ */
+export async function getGoogleAccessTokenFromBackend(supabaseAccessToken: string): Promise<string | null> {
+  try {
+    const base = await resolveIngestionBaseUrl();
+    const res = await fetch(`${base}/gdrive/my-token`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${supabaseAccessToken}` },
+    });
+    if (res.status === 404) return null; // not connected
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.access_token || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Exchange a Google refresh_token for a new access_token via backend. Returns null on failure. */
 export async function refreshGoogleAccessToken(refreshToken: string): Promise<string | null> {
   try {
