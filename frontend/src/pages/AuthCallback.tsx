@@ -20,6 +20,12 @@ export default function AuthCallback() {
           const params = new URLSearchParams(hash.replace(/^#/, ""));
           const access_token = params.get("access_token");
           const refresh_token = params.get("refresh_token");
+          // Supabase may include Google provider tokens in the redirect hash; save them first
+          const provider_token = params.get("provider_token");
+          const provider_refresh_token = params.get("provider_refresh_token");
+          if (provider_token || provider_refresh_token) {
+            saveGoogleProviderTokens(provider_token || null, provider_refresh_token || null);
+          }
           if (access_token) {
             const { data, error } = await supabase.auth.setSession({
               access_token,

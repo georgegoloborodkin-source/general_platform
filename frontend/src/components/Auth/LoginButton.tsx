@@ -1,8 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-
-const PRODUCTION_ORIGIN = "https://general-platform.vercel.app";
+import { getGoogleOAuthRedirectTo } from "@/utils/googleOAuth";
 
 export function LoginButton() {
   const { toast } = useToast();
@@ -10,8 +9,7 @@ export function LoginButton() {
   const signInWithGoogle = async () => {
     try {
       // Always redirect back to production after OAuth so we never land on a preview domain.
-      const isLocalhost = typeof window !== "undefined" && window.location?.hostname === "localhost";
-      const redirectTo = isLocalhost ? `${window.location.origin}/auth/callback` : `${PRODUCTION_ORIGIN}/auth/callback`;
+      const redirectTo = getGoogleOAuthRedirectTo();
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',

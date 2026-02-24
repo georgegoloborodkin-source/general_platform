@@ -190,6 +190,7 @@ import {
 import { convertFileWithAI, convertWithAI, askClaudeAnswerStream, askAgentStream, deleteRedundantCards, deleteAllCards, embedQuery, rerankDocuments, rewriteQueryWithLLM, generateMultiQueries, suggestConnections, contextualizeChunk, agenticChunk, graphragRetrieve, analyzeQuery, logRAGEval, extractEntities, extractCompanyProperties, orchestrateQuery, criticCheck, type AIConversionResponse, type AskFundConnection, type QueryAnalysis, type VerifiableSource, type SourceDoc } from "@/utils/aiConverter";
 import { getClickUpLists, ingestClickUpList, ingestGoogleDrive, listDriveFolders, listDriveFiles, downloadDriveFile, warmUpIngestion, sleep, refreshGoogleAccessToken, type GDriveFolderEntry, type GDriveFileEntry } from "@/utils/ingestionClient";
 import { getStoredGoogleRefreshToken, getStoredGoogleAccessToken, setStoredGoogleAccessToken, saveGoogleProviderTokens } from "@/utils/googleAuthStorage";
+import { triggerGoogleOAuthForDrive } from "@/utils/googleOAuth";
 import { gmailListMessages, gmailIngestMessage, gmailDownloadAttachment, type GmailIngestResult } from "@/utils/gmailClient";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -1906,10 +1907,10 @@ function SourcesTab({
     const accessToken = await getGoogleAccessToken();
     if (!accessToken) {
       toast({
-        title: "Google Drive access needed",
-        description: "Please sign in again with Google Drive access enabled.",
-        variant: "destructive",
+        title: "Connect Google Drive",
+        description: "Redirecting to Google to grant Drive access…",
       });
+      await triggerGoogleOAuthForDrive();
       return;
     }
     try {
@@ -2021,7 +2022,8 @@ function SourcesTab({
     }
     let accessToken = await getGoogleAccessToken();
     if (!accessToken) {
-      toast({ title: "Google Drive access needed", description: "Please sign in again with Google Drive access enabled.", variant: "destructive" });
+      toast({ title: "Connect Google Drive", description: "Redirecting to Google to grant Drive access…" });
+      await triggerGoogleOAuthForDrive();
       return;
     }
     const eventId = activeEventId || (await ensureActiveEventId());
@@ -3684,10 +3686,10 @@ function SourcesTab({
       const accessToken = await getGoogleAccessToken();
       if (!accessToken) {
         toast({
-          title: "Google Drive access needed",
-          description: "Please sign in again with Google Drive access enabled.",
-          variant: "destructive",
+          title: "Connect Google Drive",
+          description: "Redirecting to Google to grant Drive access…",
         });
+        await triggerGoogleOAuthForDrive();
         return;
       }
       const result = await ingestGoogleDrive(url.trim(), accessToken);
@@ -3909,16 +3911,16 @@ function SourcesTab({
     const accessToken = await getGoogleAccessToken();
     if (!accessToken) {
       toast({
-        title: "Google Drive access needed",
-        description: "Please sign in again with Google Drive access enabled.",
-        variant: "destructive",
+        title: "Connect Google Drive",
+        description: "Redirecting to Google to grant Drive access…",
       });
+      await triggerGoogleOAuthForDrive();
       return;
     }
     try {
       await loadGooglePicker();
       
-      // View for all supported document types (including uploaded files, not just native Google docs)
+      // View for all supported document types
       const allFilesView = new window.google.picker.DocsView()
         .setIncludeFolders(true)
         .setSelectFolderEnabled(false)
