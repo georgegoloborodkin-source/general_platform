@@ -104,3 +104,9 @@ Save and redeploy the backend.
 | Redirect / wrong domain after login | Site URL and Redirect URLs in Supabase (step 4) and only use `https://general-platform.vercel.app`. |
 
 After changing consent screen or redirect URIs, wait a few minutes and try again in an incognito window.
+
+---
+
+## 7. After deploying the app (one-time)
+
+**Sign out and sign in again once** so the app can save your Google tokens for Drive/Picker. Until then, the session may not have provider tokens available for "Add Google Drive folder".

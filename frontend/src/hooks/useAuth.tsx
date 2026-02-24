@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { UserProfile } from "@/types";
+import { clearGoogleProviderTokens } from "@/utils/googleAuthStorage";
 
 interface AuthContextType {
   user: User | null;
@@ -99,6 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   const signOut = async () => {
+    clearGoogleProviderTokens();
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);

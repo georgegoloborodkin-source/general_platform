@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Loader2, ArrowLeft } from "lucide-react";
+import { saveGoogleProviderTokens } from "@/utils/googleAuthStorage";
 
 export default function AuthCallback() {
   const navigate = useNavigate();
@@ -26,6 +27,9 @@ export default function AuthCallback() {
             });
             if (error) throw error;
             if (data?.session) {
+              // Persist Google provider tokens so Drive/Picker work later (Supabase does not persist them)
+              const session = data.session as { provider_token?: string; provider_refresh_token?: string };
+              saveGoogleProviderTokens(session.provider_token, session.provider_refresh_token);
               window.history.replaceState(null, "", window.location.pathname);
               const user = data.session.user;
               const { error: profileError } = await supabase.from("user_profiles").select("id").eq("id", user.id).single();
@@ -66,6 +70,12 @@ export default function AuthCallback() {
           const errorDescription = urlParams.get("error_description");
           if (errorParam) throw new Error(errorDescription || errorParam);
           throw new Error("Session not established. Please try signing in again.");
+        }
+
+        // Persist Google provider tokens when we have them (e.g. from getSession after redirect)
+        const s = session as { provider_token?: string; provider_refresh_token?: string };
+        if (s.provider_token || s.provider_refresh_token) {
+          saveGoogleProviderTokens(s.provider_token, s.provider_refresh_token);
         }
 
         const user = session.user;

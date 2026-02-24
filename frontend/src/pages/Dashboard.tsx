@@ -189,6 +189,7 @@ import {
 } from "@/utils/supabaseHelpers";
 import { convertFileWithAI, convertWithAI, askClaudeAnswerStream, askAgentStream, deleteRedundantCards, deleteAllCards, embedQuery, rerankDocuments, rewriteQueryWithLLM, generateMultiQueries, suggestConnections, contextualizeChunk, agenticChunk, graphragRetrieve, analyzeQuery, logRAGEval, extractEntities, extractCompanyProperties, orchestrateQuery, criticCheck, type AIConversionResponse, type AskFundConnection, type QueryAnalysis, type VerifiableSource, type SourceDoc } from "@/utils/aiConverter";
 import { getClickUpLists, ingestClickUpList, ingestGoogleDrive, listDriveFolders, listDriveFiles, downloadDriveFile, warmUpIngestion, sleep, refreshGoogleAccessToken, type GDriveFolderEntry, type GDriveFileEntry } from "@/utils/ingestionClient";
+import { getStoredGoogleRefreshToken, getStoredGoogleAccessToken, setStoredGoogleAccessToken, saveGoogleProviderTokens } from "@/utils/googleAuthStorage";
 import { gmailListMessages, gmailIngestMessage, gmailDownloadAttachment, type GmailIngestResult } from "@/utils/gmailClient";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -8453,16 +8454,29 @@ export default function Dashboard() {
     const providerToken = session?.provider_token ?? null;
     const providerRefreshToken = session?.provider_refresh_token ?? null;
 
-    // Use existing access token if we have it and aren't forcing refresh
-    if (providerToken && !forceRefresh) return providerToken;
-
-    // Supabase does not refresh Google provider_token; use our backend to exchange refresh_token for a new access_token
-    if (providerRefreshToken) {
-      const newToken = await refreshGoogleAccessToken(providerRefreshToken);
-      if (newToken) return newToken;
+    // When we have tokens from session, persist them for later (Supabase may not persist provider_*)
+    if (providerToken || providerRefreshToken) {
+      saveGoogleProviderTokens(providerToken, providerRefreshToken);
     }
 
-    return providerToken;
+    // 1) Use session access token if present and not forcing refresh
+    if (providerToken && !forceRefresh) return providerToken;
+
+    // 2) Use stored access token if still valid (avoid hitting backend every time)
+    const storedAccess = getStoredGoogleAccessToken();
+    if (storedAccess && !forceRefresh) return storedAccess;
+
+    // 3) Try refresh: session refresh_token first, then stored refresh_token
+    const refreshToken = providerRefreshToken || getStoredGoogleRefreshToken();
+    if (refreshToken) {
+      const newToken = await refreshGoogleAccessToken(refreshToken);
+      if (newToken) {
+        setStoredGoogleAccessToken(newToken);
+        return newToken;
+      }
+    }
+
+    return providerToken ?? null;
   }, []);
 
   const handleAutoLogDecision = useCallback(
