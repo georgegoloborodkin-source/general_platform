@@ -378,6 +378,46 @@ async def _extract_pdf_as_page_images(pdf_bytes: bytes, max_pages: int = 10) -> 
 
     return "\n".join(parts).strip() if parts else ""
 
+
+async def _describe_image_with_vision(image_bytes: bytes, media_type: str, file_name: str) -> str:
+    """Describe an image using Claude Vision so the model can 'read' pictures."""
+    if not ANTHROPIC_API_KEY:
+        return f"[Image file: {file_name}. Set ANTHROPIC_API_KEY to enable vision description.]"
+    media_type = media_type or "image/png"
+    if media_type not in ("image/png", "image/jpeg", "image/gif", "image/webp"):
+        media_type = "image/png"
+    try:
+        img_b64 = base64.b64encode(image_bytes).decode("utf-8")
+        client = _get_anthropic_async_client()
+        message = await _call_claude_with_fallback(
+            client,
+            max_tokens=2048,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": img_b64,
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": "Describe this image in detail: any text (OCR), labels, charts, diagrams, people, objects, and context. Output plain text suitable for search and retrieval.",
+                        },
+                    ],
+                }
+            ],
+        )
+        text = "".join(b.text for b in message.content if hasattr(b, "text"))
+        return text.strip() if text else f"[Image: {file_name} — no description generated]"
+    except Exception as e:
+        return f"[Image: {file_name} — vision description failed: {str(e)[:150]}]"
+
+
 # Converter provider settings
 _provider_env = os.getenv("CONVERTER_PROVIDER")
 CONVERTER_PROVIDER = (_provider_env or "ollama").lower().strip()
@@ -7550,6 +7590,22 @@ async def gdrive_download_file(request: GDriveDownloadFileRequest):
                         content = f"[Unsupported binary type: {mime} for file {file_name}]"
                 except Exception as e:
                     content = f"[File extraction failed for {file_name}: {str(e)[:200]}]"
+        elif mime.startswith("image/"):
+            # Download image and describe with Claude Vision so the model can read pictures
+            url = f"{GDRIVE_API}/{file_id}"
+            res = await client.get(url, headers=auth_headers, params={"alt": "media"})
+            if res.status_code >= 400:
+                raise HTTPException(status_code=res.status_code, detail=f"Drive download error: {res.text[:500]}")
+            image_bytes = res.content
+            if not image_bytes:
+                content = f"[Empty image: {file_name}]"
+            else:
+                content = await _describe_image_with_vision(
+                    image_bytes,
+                    mime if mime in ("image/png", "image/jpeg", "image/gif", "image/webp") else "image/png",
+                    file_name,
+                )
+            source_type = "notes"
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported file type: {mime}")
 

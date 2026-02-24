@@ -3,8 +3,6 @@
  * Talks to the backend converter API (Claude or other provider).
  */
 
-import { Startup, Investor, Mentor, CorporatePartner } from "@/types";
-
 const ENV_CONVERTER_API_URL = import.meta.env.VITE_CONVERTER_API_URL as string | undefined;
 
 function getDefaultBackendUrl(): string {
@@ -57,15 +55,15 @@ async function resolveConverterApiBaseUrl(): Promise<string> {
 
 export interface AIConversionRequest {
   data: string;
-  dataType?: "startup" | "investor" | "mentor" | "corporate";
+  dataType?: string;
   format?: string;
 }
 
 export interface AIConversionResponse {
-  startups: Startup[];
-  investors: Investor[];
-  mentors: Mentor[];
-  corporates: CorporatePartner[];
+  startups: Record<string, any>[];
+  investors: Record<string, any>[];
+  mentors: Record<string, any>[];
+  corporates: Record<string, any>[];
   detectedType: string;
   confidence: number;
   warnings: string[];
@@ -541,6 +539,9 @@ export async function deleteRedundantCards(eventId: string): Promise<{ deleted: 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ event_id: eventId }),
   });
+  if (response.status === 404) {
+    return { deleted: 0, message: "Endpoint not available" };
+  }
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.detail || error.message || `HTTP error! status: ${response.status}`);

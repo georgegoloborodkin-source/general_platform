@@ -2234,8 +2234,8 @@ function SourcesTab({
               }
 
               // Skip unsupported binary/media types before calling the ingestion API.
-              // This avoids noisy 400s from /gdrive/download-file for files we won't process.
-              const unsupportedMimePrefixes = ["image/", "video/", "audio/", "font/"];
+              // Images are supported (backend uses Claude Vision to describe them so the model can read pictures).
+              const unsupportedMimePrefixes = ["video/", "audio/", "font/"];
               const unsupportedMimeExact = new Set([
                 "application/zip", "application/x-zip-compressed",
                 "application/x-rar-compressed", "application/x-7z-compressed",
@@ -2245,7 +2245,6 @@ function SourcesTab({
                 "application/vnd.android.package-archive",
               ]);
               const unsupportedExtensions = new Set([
-                ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".svg", ".webp", ".ico", ".tiff", ".heic",
                 ".mp4", ".mov", ".avi", ".mkv", ".wmv", ".flv", ".webm",
                 ".mp3", ".wav", ".aac", ".ogg", ".flac", ".wma",
                 ".zip", ".rar", ".7z", ".tar", ".gz",
@@ -2306,7 +2305,6 @@ function SourcesTab({
                 await supabase.from("document_folder_links").insert({
                   document_id: docRow.id,
                   folder_id: platformFolderId,
-                  created_by: currentUserId,
                 }).then(() => {});
               }
 

@@ -1,7 +1,5 @@
--- ensure_user_organization RPC: create org for user if missing and link profile
--- Run in Supabase: Dashboard → SQL Editor → New query → paste and Run
---
--- Frontend calls: supabase.rpc("ensure_user_organization", { org_name, org_slug })
+-- Fix ensure_user_organization: when suffixed slug (e.g. g-trader-d7f835a9) already exists,
+-- link user to that existing org instead of raising 409. Run in Supabase SQL Editor.
 
 CREATE OR REPLACE FUNCTION public.ensure_user_organization(org_name text, org_slug text)
 RETURNS public.organizations
@@ -30,7 +28,6 @@ BEGIN
     RETURN created_org;
   END IF;
 
-  -- Try insert; on unique violation (slug taken), retry with user-specific suffix or use existing org
   LOOP
     BEGIN
       INSERT INTO public.organizations (name, slug)
@@ -42,13 +39,11 @@ BEGIN
         IF slug_to_use = org_slug THEN
           slug_to_use := org_slug || '-' || substr(replace(auth.uid()::text, '-', ''), 1, 8);
         ELSE
-          -- Suffixed slug also exists (e.g. from a previous or concurrent call): link to existing org and return it
           SELECT * INTO existing_org FROM public.organizations WHERE slug = slug_to_use LIMIT 1;
           IF FOUND THEN
             UPDATE public.user_profiles SET organization_id = existing_org.id WHERE id = auth.uid();
             RETURN existing_org;
           END IF;
-          -- Extra fallback: try one more unique suffix
           slug_to_use := org_slug || '-' || substr(replace(auth.uid()::text, '-', ''), 1, 8) || substr(md5(random()::text), 1, 4);
         END IF;
     END;
