@@ -11,6 +11,7 @@ import base64
 import csv
 import json
 import os
+import random
 import re
 import sys
 import time
@@ -42,6 +43,26 @@ try:
     _anthropic_sdk_available = True
 except ImportError:
     _anthropic_sdk_available = False
+
+
+def _is_anthropic_overloaded_or_rate_limited(e: Exception) -> bool:
+    """True if the error is 529 (overloaded) or 429 (rate limit) — safe to retry with backoff."""
+    msg = str(e).lower()
+    if "529" in str(e) or "overloaded" in msg or "429" in str(e) or "rate" in msg:
+        return True
+    if _anthropic_sdk_available and anthropic is not None:
+        if getattr(e, "status_code", None) in (429, 529, 503):
+            return True
+        if type(e).__name__ == "APIStatusError" and getattr(e, "status_code", None) in (429, 529, 503):
+            return True
+    return False
+
+
+def _friendly_anthropic_error_message(e: Exception) -> str:
+    """User-facing message for 529/429/overloaded so chat doesn't show raw API errors."""
+    if _is_anthropic_overloaded_or_rate_limited(e):
+        return "The AI service is temporarily busy. Please try again in a moment."
+    return str(e)[:300]
 
 # Optional: ollama for legacy/local model support
 try:
@@ -8525,34 +8546,55 @@ async def ask_agent_stream(request: AgentAskRequest, auth: AuthContext = Depends
                 model_name = ANTHROPIC_MODEL_FALLBACKS[0] if ANTHROPIC_MODEL_FALLBACKS else "claude-sonnet-4-20250514"
 
                 for iteration in range(MAX_AGENT_ITERATIONS):
-                    try:
-                        response = await client.messages.create(
-                            model=model_name,
-                            max_tokens=max_tokens,
-                            temperature=0.1,
-                            system=AGENT_SYSTEM_PROMPT,
-                            messages=current_messages,
-                            tools=tools,
-                        )
-                    except anthropic.NotFoundError:
-                        for fallback in ANTHROPIC_MODEL_FALLBACKS[1:]:
-                            try:
-                                response = await client.messages.create(
-                                    model=fallback,
-                                    max_tokens=max_tokens,
-                                    temperature=0.1,
-                                    system=AGENT_SYSTEM_PROMPT,
-                                    messages=current_messages,
-                                    tools=tools,
-                                )
-                                model_name = fallback
-                                break
-                            except Exception:
+                    response = None
+                    last_create_error = None
+                    max_retries = 3
+                    for attempt in range(max_retries):
+                        try:
+                            response = await client.messages.create(
+                                model=model_name,
+                                max_tokens=max_tokens,
+                                temperature=0.1,
+                                system=AGENT_SYSTEM_PROMPT,
+                                messages=current_messages,
+                                tools=tools,
+                            )
+                            last_create_error = None
+                            break
+                        except anthropic.NotFoundError:
+                            last_create_error = None
+                            for fallback in ANTHROPIC_MODEL_FALLBACKS[1:]:
+                                try:
+                                    response = await client.messages.create(
+                                        model=fallback,
+                                        max_tokens=max_tokens,
+                                        temperature=0.1,
+                                        system=AGENT_SYSTEM_PROMPT,
+                                        messages=current_messages,
+                                        tools=tools,
+                                    )
+                                    model_name = fallback
+                                    break
+                                except Exception:
+                                    continue
+                            else:
+                                yield f"data: {json.dumps({'error': 'All models failed'})}\n\n"
+                                yield "data: [DONE]\n\n"
+                                return
+                            break  # fallback succeeded, exit retry loop
+                        except Exception as e:
+                            last_create_error = e
+                            if _is_anthropic_overloaded_or_rate_limited(e) and attempt < max_retries - 1:
+                                delay = (2 ** attempt) * 2 + random.uniform(0, 1)
+                                await asyncio.sleep(delay)
                                 continue
-                        else:
-                            yield f"data: {json.dumps({'error': 'All models failed'})}\n\n"
+                            yield f"data: {json.dumps({'error': _friendly_anthropic_error_message(e)})}\n\n"
                             yield "data: [DONE]\n\n"
                             return
+                    if response is None and last_create_error is not None:
+                        yield f"data: {json.dumps({'error': _friendly_anthropic_error_message(last_create_error)})}\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
 
                     tool_calls = []
                     text_parts = []
@@ -8633,14 +8675,14 @@ async def ask_agent_stream(request: AgentAskRequest, auth: AuthContext = Depends
                                 if event.delta.type == "text_delta" and hasattr(event.delta, "text"):
                                     yield f"data: {json.dumps({'text': event.delta.text})}\n\n"
                 except Exception as e:
-                    yield f"data: {json.dumps({'error': f'Final answer error: {str(e)[:200]}'})}\n\n"
+                    yield f"data: {json.dumps({'error': _friendly_anthropic_error_message(e)})}\n\n"
 
                 yield "data: [DONE]\n\n"
 
             except Exception as e:
                 import traceback
                 traceback.print_exc()
-                yield f"data: {json.dumps({'error': f'Agent error: {str(e)[:300]}'})}\n\n"
+                yield f"data: {json.dumps({'error': _friendly_anthropic_error_message(e)})}\n\n"
                 yield "data: [DONE]\n\n"
 
         return StreamingResponse(
