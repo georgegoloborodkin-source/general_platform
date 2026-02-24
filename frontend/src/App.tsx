@@ -10,6 +10,19 @@ import Login from "./pages/Login";
 import AuthCallback from "./pages/AuthCallback";
 
 const queryClient = new QueryClient();
+const PRODUCTION_HOSTNAME = "general-platform.vercel.app";
+
+function useProductionDomainRedirect() {
+  if (typeof window === "undefined") return false;
+  const { hostname, pathname, search, hash, protocol } = window.location;
+  const isVercelPreview = hostname.endsWith(".vercel.app") && hostname !== PRODUCTION_HOSTNAME;
+  if (!isVercelPreview) return false;
+
+  // Force previews onto production so auth + API behavior is consistent.
+  const target = `${protocol}//${PRODUCTION_HOSTNAME}${pathname}${search}${hash}`;
+  window.location.replace(target);
+  return true;
+}
 
 // If Supabase OAuth redirected to root (or another path) with tokens in the hash, send to callback so session is established
 function useOAuthHashRedirect() {
@@ -23,6 +36,9 @@ function useOAuthHashRedirect() {
 }
 
 const App = () => {
+  const redirectingToProduction = useProductionDomainRedirect();
+  if (redirectingToProduction) return null;
+
   const redirecting = useOAuthHashRedirect();
   if (redirecting) return null;
 
