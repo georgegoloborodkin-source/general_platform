@@ -9282,18 +9282,19 @@ export default function Dashboard() {
         if (!eventId) return;
         const userId = profile?.id || user?.id || null;
         
-        // Ensure thread exists (create if it doesn't)
+        // Ensure thread exists and is a real UUID (DB thread_id is UUID type)
         let threadId = payload.threadId;
-        if (!threadId) {
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(threadId || "");
+        if (!threadId || !isUuid) {
           const newThreadId = await createChatThread("Chat", null);
           if (newThreadId) {
             threadId = newThreadId;
           } else {
-            // Fallback: use a temporary ID (won't persist but won't crash)
-            threadId = `t-${Date.now()}`;
+            // Cannot persist without a real thread UUID — skip DB insert (message stays in state only)
+            return;
           }
         }
-        
+
         // Retry logic for network failures
         let lastError: any = null;
         for (let attempt = 0; attempt < 3; attempt++) {
@@ -10062,21 +10063,27 @@ export default function Dashboard() {
 
   // Helper function to get thread messages (from state or DB)
   const getThreadMessages = useCallback(async (threadId: string, limit: number = 10): Promise<Array<{ role: "user" | "assistant"; content: string }>> => {
-    // ALWAYS fetch from database to ensure we have the latest messages
-    // State might be stale or missing recent messages
     let threadMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
-    
-    if (threadId) {
-      try {
-        const eventId = activeEventId || (await ensureActiveEventId());
-        if (eventId) {
-          const { data: dbMessages, error } = await supabase
-            .from("chat_messages")
-            .select("role, content, created_at")
-            .eq("event_id", eventId)
-            .eq("thread_id", threadId)
-            .order("created_at", { ascending: true })
-            .limit(limit);
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(threadId || "");
+    if (!threadId || !isUuid) {
+      return messages
+        .filter((m) => m.threadId === threadId)
+        .slice(-limit)
+        .map((m) => ({
+          role: (m.author === "assistant" ? "assistant" : "user") as "user" | "assistant",
+          content: m.text,
+        }));
+    }
+    try {
+      const eventId = activeEventId || (await ensureActiveEventId());
+      if (eventId) {
+        const { data: dbMessages, error } = await supabase
+          .from("chat_messages")
+          .select("role, content, created_at")
+          .eq("event_id", eventId)
+          .eq("thread_id", threadId)
+          .order("created_at", { ascending: true })
+          .limit(limit);
           
           if (error) {
             console.error("[DEBUG] Error fetching chat history from DB:", error);
@@ -10103,8 +10110,7 @@ export default function Dashboard() {
           }));
         console.log("[DEBUG] Using state messages as fallback:", threadMessages.length, "messages");
       }
-    }
-    
+
     // If still no messages, try state as last resort
     if (threadMessages.length === 0) {
       threadMessages = messages
@@ -12691,12 +12697,16 @@ export default function Dashboard() {
       setEditingMessageId(null);
     }
     let threadId = activeThread;
-    if (!threadId) {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(threadId || "");
+    if (!threadId || !isUuid) {
       const createdId = await createChatThread("Main thread");
-      const newThreadId = createdId || `t-${Date.now()}`;
-      setThreads((prev) => [...prev, { id: newThreadId, title: "Main thread" }]);
-      setActiveThread(newThreadId);
-      threadId = newThreadId;
+      if (createdId) {
+        threadId = createdId;
+        setThreads((prev) => [...prev, { id: createdId, title: "Main thread" }]);
+        setActiveThread(createdId);
+      } else {
+        threadId = `t-${Date.now()}`;
+      }
     }
     const id = `m-${Date.now()}`;
     setMessages((prev) => [...prev, { id, author: "user", text: question, threadId }]);
