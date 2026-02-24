@@ -500,6 +500,7 @@ async def log_api_usage(
         )
     except Exception as e:
         # Don't break API calls if logging fails
+        pass
 
 # Ask-the-fund settings (generous tokens for comprehensive answers)
 ASK_MAX_TOKENS = int(os.getenv("ASK_MAX_TOKENS", "4000"))  # Increased from 1000 for more detailed responses
@@ -3216,6 +3217,7 @@ async def extract_text_content(file: UploadFile) -> Tuple[str, str]:
                     text_content = json.dumps(parsed, indent=2, ensure_ascii=False)
                 except json.JSONDecodeError as e:
                     # Invalid JSON - keep original but log warning
+                    pass
         except UnicodeDecodeError:
             # Try other encodings
             try:
@@ -3585,7 +3587,8 @@ async def convert_data(request: ConversionRequest):
                 return direct_result
         except Exception as e:
             # If direct CSV parsing fails, fall through to Ollama
-    
+            pass
+
     try:
         # Create prompt
         prompt = create_conversion_prompt(request.data, request.dataType)
@@ -5120,7 +5123,8 @@ async def ask_fund_stream(request: AskRequest, auth: AuthContext = Depends(get_a
         # Debug logging - DETAILED
         if previous_messages:
             # Print all messages for debugging
-        
+            pass
+
         prompt = build_answer_prompt(resolved_question, request.sources or [], request.decisions or [], previous_messages, request.connections or [])
         
         async def generate():
