@@ -156,7 +156,6 @@ import {
   getCompanyCards,
   updateCompanyCardProperties,
   getAllEntityCards,
-  ingestInvestorCSVRows,
   ingestStartupCSVRows,
   insertDecision,
   insertDocument,
@@ -189,7 +188,7 @@ import {
   type CompanyConnection,
 } from "@/utils/supabaseHelpers";
 import { convertFileWithAI, convertWithAI, askClaudeAnswerStream, askAgentStream, deleteRedundantCards, deleteAllCards, embedQuery, rerankDocuments, rewriteQueryWithLLM, generateMultiQueries, suggestConnections, contextualizeChunk, agenticChunk, graphragRetrieve, analyzeQuery, logRAGEval, extractEntities, extractCompanyProperties, orchestrateQuery, criticCheck, type AIConversionResponse, type AskFundConnection, type QueryAnalysis, type VerifiableSource, type SourceDoc } from "@/utils/aiConverter";
-import { getClickUpLists, ingestClickUpList, ingestGoogleDrive, listDriveFolders, listDriveFiles, downloadDriveFile, warmUpIngestion, sleep, type GDriveFolderEntry, type GDriveFileEntry } from "@/utils/ingestionClient";
+import { getClickUpLists, ingestClickUpList, ingestGoogleDrive, listDriveFolders, listDriveFiles, downloadDriveFile, warmUpIngestion, sleep, refreshGoogleAccessToken, type GDriveFolderEntry, type GDriveFileEntry } from "@/utils/ingestionClient";
 import { gmailListMessages, gmailIngestMessage, gmailDownloadAttachment, type GmailIngestResult } from "@/utils/gmailClient";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -244,7 +243,7 @@ const initialScopes: ScopeItem[] = [
 
 const initialThreads: Thread[] = [];
 const initialMessages: Message[] = [];
-const LOCAL_CHAT_CACHE_KEY = "ventureos_chat_cache";
+const LOCAL_CHAT_CACHE_KEY = "platform_chat_cache";
 
 type LocalChatMessage = {
   id: string;
@@ -2108,7 +2107,7 @@ function SourcesTab({
         // Sourcing / Deals
         if (/\b(sourcing|deal\s*flow|pipeline|inbound|deal|deals|prospects?|market\s*research|research)\b/.test(lower)) return "Sourcing";
         // Partners / Stakeholders
-        if (/\b(fund|funds?|investors?|lps?|limited\s*partners?|co-invest|co.?invest|syndicate|partners?|stakeholders?)\b/.test(lower)) return "Partners";
+        if (/\b(partners?|stakeholders?|syndicate|lps?|limited\s*partners?|co-invest|co.?invest)\b/.test(lower)) return "Partners";
         // Projects / Companies
         if (/\b(portfolio|companies|startups?|ventures?|investments?|due\s*diligence|dd|diligence|projects?)\b/.test(lower)) return "Projects";
         return null;
@@ -2169,7 +2168,7 @@ function SourcesTab({
       const isLikelyCompanyName = (name: string): boolean => {
         const words = name.trim().split(/\s+/);
         if (words.length > 4) return false; // company names are short
-        const generic = /^(sourcing|intern|interns|team|notes|docs|documents|shared|misc|general|archive|old|new|temp|draft|test|admin|meeting|meetings|portfolio|companies|investors?|funds?|deals?|research|diligence|dd)$/i;
+        const generic = /^(sourcing|intern|interns|team|notes|docs|documents|shared|misc|general|archive|old|new|temp|draft|test|admin|meeting|meetings|portfolio|companies|partners?|deals?|research|diligence|dd)$/i;
         if (words.some((w) => generic.test(w))) return false;
         return true;
       };
@@ -3126,11 +3125,7 @@ function SourcesTab({
                 if (conversion.raw_content && (!rawContent || conversion.raw_content.length > rawContent.length)) {
                   rawContent = conversion.raw_content;
                 }
-                console.log("[CSV] Converter detected:", conversion.detectedType,
-                  "| investors:", (conversion.investors || []).length,
-                  "| startups:", (conversion.startups || []).length);
               } catch (csvErr) {
-                console.warn("[CSV] Converter API failed or timed out (non-fatal):", csvErr);
                 // Non-fatal вЂ” the raw text is already stored
               }
             }
@@ -3226,16 +3221,13 @@ function SourcesTab({
           };
 
           // в”Ђв”Ђ Detect folder-based entity type в”Ђв”Ђ
-          // If document is uploaded to a folder with "portfolio", "company", "investor", or "fund" in name,
-          // we'll force-create a company card even if the title doesn't match the pattern
           const currentSelectedFolder = selectedFolderId !== "none" 
             ? sourceFolders.find(f => f.id === selectedFolderId)
             : null;
           const folderName = currentSelectedFolder?.name?.toLowerCase() || "";
-          const isPortfolioFolder = folderName.includes("portfolio") || folderName.includes("company");
-          const isInvestorFolder = folderName.includes("investor") || folderName.includes("fund");
-          const shouldForceCreateCard = isPortfolioFolder || isInvestorFolder;
-          const entityTypeHint = isInvestorFolder ? "fund" : "company";
+          const isPortfolioFolder = folderName.includes("portfolio") || folderName.includes("company") || folderName.includes("partner");
+          const shouldForceCreateCard = isPortfolioFolder;
+          const entityTypeHint = "company";
 
           // Save document record (even if storage upload failed)
           const { data: doc, error: docError } = await insertDocument(eventId, {
@@ -3313,32 +3305,15 @@ function SourcesTab({
           }
 
           // в”Ђв”Ђ Structured CSV ingestion: extract rows into kg_entities в”Ђв”Ђ
-          // If the conversion result contains structured investors/startups arrays,
-          // create real entity records so they appear in Company Cards / are queryable.
           if (extractedJson && docRecord.id) {
             try {
               const convData = extractedJson as Record<string, any>;
-              const investorRows = convData.investors as any[] | undefined;
               const startupRows = convData.startups as any[] | undefined;
-
-              if (investorRows && investorRows.length > 0) {
-                const ingResult = await ingestInvestorCSVRows(
-                  eventId, investorRows, docRecord.id, currentUserId || null
-                );
-                console.log(`[StructuredCSV] Investors: ${ingResult.entitiesCreated} created, ${ingResult.entitiesUpdated} updated, ${ingResult.skipped} skipped, ${ingResult.errors.length} errors`);
-                if (ingResult.entitiesCreated > 0 || ingResult.entitiesUpdated > 0) {
-                  toast({ 
-                    title: "Structured data processed",
-                    description: `${ingResult.entitiesCreated} new + ${ingResult.entitiesUpdated} updated investor/fund entities from CSV.`,
-                  });
-                }
-              }
 
               if (startupRows && startupRows.length > 0) {
                 const ingResult = await ingestStartupCSVRows(
                   eventId, startupRows, docRecord.id, currentUserId || null
                 );
-                console.log(`[StructuredCSV] Startups: ${ingResult.entitiesCreated} created, ${ingResult.entitiesUpdated} updated, ${ingResult.skipped} skipped, ${ingResult.errors.length} errors`);
                 if (ingResult.entitiesCreated > 0 || ingResult.entitiesUpdated > 0) {
                   toast({
                     title: "Structured data processed",
@@ -3347,7 +3322,6 @@ function SourcesTab({
                 }
               }
             } catch (structErr) {
-              console.error("Error ingesting structured CSV rows:", structErr);
               // Non-fatal: the document is saved, structured extraction is a bonus
             }
           }
@@ -3385,7 +3359,7 @@ function SourcesTab({
                     const first = s.split(/\s+/)[0];
                     return (first && first.length > 1) ? first : s || rawTitle;
                   };
-                  const companyName = folderInfo.currentSelectedFolder?.name && !folderInfo.currentSelectedFolder.name.toLowerCase().match(/^(portfolio|companies|investors?|funds?)$/)
+                  const companyName = folderInfo.currentSelectedFolder?.name && !folderInfo.currentSelectedFolder.name.toLowerCase().match(/^(portfolio|companies|partners?)$/)
                     ? folderInfo.currentSelectedFolder.name
                     : deriveCompanyName(rawTitle);
                   const normalizedName = normalizeCompanyNameForMatch(companyName);
@@ -8475,7 +8449,20 @@ export default function Dashboard() {
       }
     }
     const { data } = await supabase.auth.getSession();
-    return data.session?.provider_token || null;
+    const session = data.session;
+    const providerToken = session?.provider_token ?? null;
+    const providerRefreshToken = session?.provider_refresh_token ?? null;
+
+    // Use existing access token if we have it and aren't forcing refresh
+    if (providerToken && !forceRefresh) return providerToken;
+
+    // Supabase does not refresh Google provider_token; use our backend to exchange refresh_token for a new access_token
+    if (providerRefreshToken) {
+      const newToken = await refreshGoogleAccessToken(providerRefreshToken);
+      if (newToken) return newToken;
+    }
+
+    return providerToken;
   }, []);
 
   const handleAutoLogDecision = useCallback(
@@ -9238,7 +9225,7 @@ export default function Dashboard() {
     const updated = [entry, ...costLog].slice(0, 100);
     setCostLog(updated);
     if (typeof window !== "undefined") {
-      localStorage.setItem("ventureos_cost_log", JSON.stringify(updated));
+      localStorage.setItem("platform_cost_log", JSON.stringify(updated));
     }
   }, [costLog]);
 
@@ -9351,7 +9338,7 @@ export default function Dashboard() {
     // Clear legacy permanent disable flag вЂ” we now use session-only failure tracking
     localStorage.removeItem("disable_embeddings");
     embeddingsDisabledRef.current = false;
-    const existing = localStorage.getItem("ventureos_cost_log");
+    const existing = localStorage.getItem("platform_cost_log");
     if (existing) {
       try {
         const parsed = JSON.parse(existing);
@@ -11766,7 +11753,7 @@ export default function Dashboard() {
           "how can you help",
           "what features",
           "what functionality",
-          "what is ventureos",
+          "what is this platform",
           "who are you",
           "introduce yourself",
           "what is this",

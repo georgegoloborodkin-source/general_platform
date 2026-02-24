@@ -224,6 +224,23 @@ export async function ingestGoogleDrive(
 
 // ─── Google Drive Folder-Sync Helpers ────────────────────────────────────────
 
+/** Exchange a Google refresh_token for a new access_token via backend. Returns null on failure. */
+export async function refreshGoogleAccessToken(refreshToken: string): Promise<string | null> {
+  try {
+    const base = await resolveIngestionBaseUrl();
+    const response = await fetchWithRetry(`${base}/gdrive/refresh-token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.access_token || null;
+  } catch {
+    return null;
+  }
+}
+
 export interface GDriveFolderEntry {
   id: string;
   name: string;

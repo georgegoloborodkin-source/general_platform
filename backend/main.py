@@ -238,7 +238,6 @@ async def _call_claude_with_fallback(
         except Exception as e:
             err_str = str(e)
             if "404" in err_str or "not_found" in err_str:
-                print(f"⚠️  Model '{model_name}' returned 404 (retired). Trying next fallback...")
                 last_error = e
                 continue
             # Log error for failed requests too
@@ -317,7 +316,6 @@ async def extract_pdf_with_claude_native(pdf_bytes: bytes, max_pages: int = 10) 
         ]
         return "\n".join(text_parts).strip()
     except Exception as e:
-        print(f"[PDF-NATIVE] Claude native PDF extraction failed: {e}")
         # Fallback to page-image approach
         return await _extract_pdf_as_page_images(pdf_bytes, max_pages)
 
@@ -435,7 +433,6 @@ def get_supabase():
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY env vars required for Agentic RAG")
     _sb_client = _supabase_create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-    print(f"✅ Supabase client initialised for Agentic RAG ({SUPABASE_URL[:40]}...)")
     return _sb_client
 
 # ---------------------------------------------------------------------------
@@ -503,7 +500,6 @@ async def log_api_usage(
         )
     except Exception as e:
         # Don't break API calls if logging fails
-        print(f"[API_COST] Failed to log usage: {e}")
 
 # Ask-the-fund settings (generous tokens for comprehensive answers)
 ASK_MAX_TOKENS = int(os.getenv("ASK_MAX_TOKENS", "4000"))  # Increased from 1000 for more detailed responses
@@ -857,6 +853,15 @@ class GDriveFileEntry(BaseModel):
 
 class GDriveListFilesResponse(BaseModel):
     files: List[GDriveFileEntry] = []
+
+
+class GDriveRefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+class GDriveRefreshTokenResponse(BaseModel):
+    access_token: str
+
 
 class GDriveDownloadFileRequest(BaseModel):
     access_token: str
@@ -1513,7 +1518,6 @@ Output ONLY the search terms. Do not include explanations or additional text."""
                     return extracted
     except Exception as e:
         # Fallback to simple regex extraction on error
-        print(f"Keyword extraction failed: {e}")
         import re
         instruction_patterns = [
             r"\bsummarize\b",
@@ -1613,7 +1617,6 @@ def has_question_overlap(
                           "relationship", "relationships", "link", "linked", "help", "collaborate",
                           "synergy", "recommend", "suggest"]
     if any(kw in q_lower for kw in connection_keywords):
-        print(f"[DEBUG] has_question_overlap: ALLOWING connection-intent question")
         return True
     
     # CRITICAL: If this is a follow-up question (has previous messages), be MORE lenient
@@ -1625,7 +1628,6 @@ def has_question_overlap(
     followup_patterns = ["yes", "more", "tell", "give", "what", "how", "why", "explain", 
                         "elaborate", "detail", "about", "background", "education", "experience"]
     if is_followup and any(pattern in q_lower for pattern in followup_patterns):
-        print(f"[DEBUG] has_question_overlap: ALLOWING follow-up question with history")
         return True
     
     # Extract names from the question - if the question contains a proper name that's in sources, allow it
@@ -1635,7 +1637,6 @@ def has_question_overlap(
         source_text = " ".join([f"{s.title or ''} {s.file_name or ''} {s.snippet or ''}".strip() for s in sources]).lower()
         for name in question_names:
             if name.lower() in source_text:
-                print(f"[DEBUG] has_question_overlap: ALLOWING because name '{name}' found in sources")
                 return True
     
     if previous_messages:
@@ -1685,10 +1686,8 @@ def has_question_overlap(
             ]
         ).lower()
         if any(token in connection_text for token in q_tokens):
-            print(f"[DEBUG] has_question_overlap: ALLOWING - company found in connections graph")
             return True
     
-    print(f"[DEBUG] has_question_overlap: REJECTING - no overlap found. q_tokens={q_tokens[:10]}")
     return False
 
 
@@ -1847,8 +1846,6 @@ async def rewrite_query_with_llm(question: str, previous_messages: List[ChatMess
                 if match and match not in common_words and len(match) > 2:
                     company_names_in_last_q.append(match)
     
-    print(f"[DEBUG] Names found in history - Full names: {all_names}, Single names: {single_names[:5]}")
-    print(f"[DEBUG] Company names in last user question: {company_names_in_last_q}")
     
     # Format the history into a clean dialogue string (last 4 messages for better context)
     history_text = ""
@@ -1869,7 +1866,6 @@ async def rewrite_query_with_llm(question: str, previous_messages: List[ChatMess
             if (has_pronouns or affirmative_only) and (all_names or single_names):
                 # Prefer full names, fall back to single names
                 main_subject = all_names[-1] if all_names else single_names[-1]
-                print(f"[DEBUG] No API key - using fallback with subject: {main_subject}")
                 if has_pronouns:
                     rewritten = question
                     for pronoun in ["him", "her", "it", "they", "them", "his", "her", "their", "this", "that"]:
@@ -1915,7 +1911,6 @@ async def rewrite_query_with_llm(question: str, previous_messages: List[ChatMess
                 rewritten = rewritten.rstrip(".")
                 
                 if rewritten and rewritten != question:
-                    print(f"[DEBUG] Query rewritten by LLM: '{question}' -> '{rewritten}'")
                     
                     # CRITICAL VALIDATION: Check if rewritten query contains company/entity names from conversation
                     # This prevents confusion between different companies (e.g., Weego vs Giga Energy)
@@ -1932,12 +1927,9 @@ async def rewrite_query_with_llm(question: str, previous_messages: List[ChatMess
                     
                     # If the last user question mentioned a company but the rewritten query doesn't include it, fix it
                     if company_names_in_last_q and not has_company_from_last_q:
-                        print(f"[DEBUG] ⚠️ WARNING: Last user question mentioned '{company_names_in_last_q[0]}' but rewritten query doesn't include it!")
-                        print(f"[DEBUG] Original question was about: {last_user_question[:100]}")
                         # For vague follow-ups like "you have it, just give the answer", use the last user question's company
                         if has_vague_pattern or affirmative_only:
                             main_company = company_names_in_last_q[0]
-                            print(f"[DEBUG] Fixing: Using company '{main_company}' from last user question")
                             # If the rewritten query is too generic, replace it with the original question's intent
                             if len(rewritten.split()) < 5:  # Very short/generic rewrite
                                 # Try to extract the intent from the last user question
@@ -1959,12 +1951,10 @@ async def rewrite_query_with_llm(question: str, previous_messages: List[ChatMess
                     
                     # Validate: if original had pronouns and rewritten doesn't contain any name from history, force fix it
                     elif has_pronouns and (all_names or single_names) and not has_name_from_history:
-                        print(f"[DEBUG] ⚠️ WARNING: LLM rewrite doesn't contain names from history, using fallback")
                         # Use the most recent full name, or fall back to single name, or company from last question
                         main_subject = (company_names_in_last_q[0] if company_names_in_last_q else 
                                        (all_names[-1] if all_names else single_names[-1] if single_names else None))
                         if main_subject:
-                            print(f"[DEBUG] Using fallback: replacing pronouns with '{main_subject}'")
                             rewritten = question
                             for pronoun in ["him", "her", "it", "they", "them", "his", "her", "their", "this", "that"]:
                                 rewritten = re.sub(rf'\b{pronoun}\b', main_subject, rewritten, flags=re.IGNORECASE)
@@ -1973,11 +1963,9 @@ async def rewrite_query_with_llm(question: str, previous_messages: List[ChatMess
                     return rewritten
     except Exception as e:
         # Fallback to simple replacement on error
-        print(f"[DEBUG] Query rewriting exception: {e}")
         # Use names extracted from ALL messages (extracted above)
         if has_pronouns and (all_names or single_names):
             main_subject = all_names[-1] if all_names else single_names[-1]
-            print(f"[DEBUG] Exception fallback: replacing pronouns with '{main_subject}'")
             rewritten = question
             for pronoun in ["him", "her", "it", "they", "them", "his", "her", "their", "this", "that"]:
                 rewritten = re.sub(rf'\b{pronoun}\b', main_subject, rewritten, flags=re.IGNORECASE)
@@ -2095,18 +2083,10 @@ def build_answer_prompt(
                              f"Last User Question: {last_user_q[:200] if last_user_q else 'N/A'}\n" + \
                              f"\n" + "\n".join(conversation_lines) + "\n=== END OF CONVERSATION HISTORY ===\n"
         # Debug logging - DETAILED
-        print(f"[DEBUG] ✅ Conversation history included in prompt: {len(recent_messages)} messages")
-        print(f"[DEBUG] First message: {recent_messages[0].role}: {recent_messages[0].content[:150]}")
-        print(f"[DEBUG] Last message: {recent_messages[-1].role}: {recent_messages[-1].content[:150]}")
         # Check if history contains names that might be referenced
         all_content = " ".join([m.content for m in recent_messages])
         import re
         names = re.findall(r'\b[A-Z][a-z]+\s+[A-Z][a-z]+\b', all_content)
-        if names:
-            print(f"[DEBUG] Found names in history: {set(names)}")
-    else:
-        print(f"[DEBUG] ❌❌❌ CRITICAL WARNING: No conversation history provided! previous_messages={previous_messages}")
-        print(f"[DEBUG] This means pronouns like 'him', 'her' cannot be resolved!")
     
     
     is_raw_text = is_raw_text_request(question)
@@ -3146,7 +3126,7 @@ async def extract_text_content(file: UploadFile) -> Tuple[str, str]:
                 if claude_text and len(claude_text.strip()) >= 50:
                     return file_ext, claude_text
             except Exception as claude_err:
-                print(f"[PDF] Claude-native extraction failed: {claude_err}")
+                pass
 
         # ── Strategy 2: PyMuPDF fast text extraction (digital PDFs) ──
         import concurrent.futures
@@ -3236,7 +3216,6 @@ async def extract_text_content(file: UploadFile) -> Tuple[str, str]:
                     text_content = json.dumps(parsed, indent=2, ensure_ascii=False)
                 except json.JSONDecodeError as e:
                     # Invalid JSON - keep original but log warning
-                    print(f"[JSON] Invalid JSON structure: {e}. Using raw content.")
         except UnicodeDecodeError:
             # Try other encodings
             try:
@@ -3463,7 +3442,6 @@ def try_direct_csv_parse(text_data: str, data_type: Optional[str]) -> Optional[C
         first_row = rows[0]
         headers_lower = {normalize_header(k): k for k in first_row.keys() if k}
         
-        print(f"[DEBUG] CSV Headers detected: {list(headers_lower.keys())}")
         
         # Helper: check if ANY normalized header contains a given substring
         def any_header_contains(substring: str) -> bool:
@@ -3491,7 +3469,6 @@ def try_direct_csv_parse(text_data: str, data_type: Optional[str]) -> Optional[C
         
         has_startup_headers = any(h in headers_lower for h in ['company name', 'companyname']) and any(h in headers_lower for h in ['funding', 'stage'])
         
-        print(f"[DEBUG] Mentor: {has_mentor_headers}, Corporate: {has_corporate_headers}, Investor: {has_investor_headers} (std={has_investor_headers_standard}, clickup={has_investor_headers_clickup}), Startup: {has_startup_headers}")
         
         startups = []
         investors = []
@@ -3542,7 +3519,6 @@ def try_direct_csv_parse(text_data: str, data_type: Optional[str]) -> Optional[C
                 )
         
         elif has_investor_headers:
-            print(f"[CSV] Parsing {len(rows)} rows as investors...")
             skipped_no_name = 0
             for row_idx, row in enumerate(rows):
                 try:
@@ -3553,13 +3529,9 @@ def try_direct_csv_parse(text_data: str, data_type: Optional[str]) -> Optional[C
                         investors.append(inv)
                     else:
                         skipped_no_name += 1
-                        if row_idx < 3:  # Log first few skips for debugging
-                            print(f"[CSV] Row {row_idx}: skipped (no firm name). Keys: {list(row.keys())[:5]}")
                 except Exception as e:
                     warnings.append(f"Error parsing investor row {row_idx}: {str(e)}")
-                    print(f"[CSV] Row {row_idx} error: {e}")
             
-            print(f"[CSV] ✅ Parsed {len(investors)} investors, skipped {skipped_no_name} (no name), {len(warnings)} warnings")
             
             if investors:
                 return ConversionResponse(
@@ -3598,7 +3570,6 @@ def try_direct_csv_parse(text_data: str, data_type: Optional[str]) -> Optional[C
         return None
         
     except Exception as e:
-        print(f"Direct CSV parse exception: {e}")
         return None
 
 @app.post("/convert", response_model=ConversionResponse)
@@ -3614,7 +3585,6 @@ async def convert_data(request: ConversionRequest):
                 return direct_result
         except Exception as e:
             # If direct CSV parsing fails, fall through to Ollama
-            print(f"Direct CSV parse failed, falling back to Ollama: {e}")
     
     try:
         # Create prompt
@@ -3632,7 +3602,6 @@ async def convert_data(request: ConversionRequest):
                     # structured is already a dict matching StructuredConversionResult
                     parsed_data = structured
                 except Exception as struct_err:
-                    print(f"[STRUCTURED] Structured output failed, falling back to raw: {struct_err}")
                     response_text = await call_anthropic(prompt)
                     parsed_data = parse_ollama_response(response_text)
             else:
@@ -4463,7 +4432,6 @@ async def orchestrate_query(request: OrchestrateRequest):
             sub_queries=data.get("sub_queries", {}),
         )
     except Exception as e:
-        print(f"[ORCHESTRATOR] Error: {e}")
         return OrchestrateResponse(use_vector=True, reasoning=f"Router error: {str(e)[:100]}")
 
 
@@ -4547,7 +4515,6 @@ async def critic_check(request: CriticRequest):
             confidence=data.get("confidence", 0.5),
         )
     except Exception as e:
-        print(f"[CRITIC] Error: {e}")
         return CriticResponse(issues=[], is_grounded=True, confidence=0.5)
 
 
@@ -4669,7 +4636,6 @@ RULES:
             confidence=data.get("confidence", 0.5),
         )
     except Exception as e:
-        print(f"[SYSTEM2-REFLECT] Error: {e}")
         return System2ReflectResponse(
             needs_more_data=False,
             refined_answer=request.draft_answer,
@@ -4840,7 +4806,6 @@ async def colbert_rerank(request: ColBERTRerankRequest):
         return ColBERTRerankResponse(results=scored_results, method="colbert_late_interaction")
         
     except Exception as e:
-        print(f"[COLBERT-RERANK] Error in late-interaction: {e}, falling back to Voyage only")
         # Fallback: just use Voyage reranker scores
         try:
             fallback = await rerank_with_voyage(
@@ -4860,7 +4825,6 @@ async def colbert_rerank(request: ColBERTRerankRequest):
                 method="voyage_fallback",
             )
         except Exception as e2:
-            print(f"[COLBERT-RERANK] Fallback also failed: {e2}")
             return ColBERTRerankResponse(results=[], method="error")
 
 
@@ -4927,7 +4891,6 @@ async def _batch_embed_tokens(tokens: List[str]) -> List[List[float]]:
             )
             
             if response.status_code >= 400:
-                print(f"[COLBERT] Batch embed error: {response.status_code}")
                 return []
             
             data = response.json() or {}
@@ -4938,7 +4901,6 @@ async def _batch_embed_tokens(tokens: List[str]) -> List[List[float]]:
                     embeddings.append(emb)
             return embeddings
     except Exception as e:
-        print(f"[COLBERT] Batch embed failed: {e}")
         return []
 
 
@@ -5124,22 +5086,17 @@ async def ask_fund_stream(request: AskRequest, auth: AuthContext = Depends(get_a
             raise HTTPException(status_code=400, detail="question is required.")
 
         # Use LLM-based query rewriting for better pronoun resolution
-        print(f"[DEBUG] /ask/stream - Original question: {question}")
-        print(f"[DEBUG] /ask/stream - Previous messages count: {len(request.previous_messages or [])}")
         
         resolved_question = await rewrite_query_with_llm(question, request.previous_messages or [])
-        print(f"[DEBUG] /ask/stream - Resolved question: {resolved_question}")
         
         # Check overlap - but ONLY block if there are literally no sources at all
         has_overlap = has_question_overlap(
             resolved_question, request.sources or [], request.previous_messages or [], request.decisions or [], request.connections or []
         )
-        print(f"[DEBUG] /ask/stream - has_overlap: {has_overlap}")
         
         # ALWAYS forward to Claude - even with empty sources, it can answer greetings and general questions
         # Only block if it's explicitly not a meta question AND no overlap AND sources is None (not just empty)
         if not is_meta_question(resolved_question) and not has_overlap and request.sources is None:
-            print(f"[DEBUG] /ask/stream - REJECTING: No sources provided (None) and no overlap")
             no_info_message = "I couldn't find relevant information for your question. Could you provide more details or try rephrasing?"
             async def generate_empty():
                 yield f"data: {json.dumps({'text': no_info_message})}\n\n"
@@ -5161,19 +5118,8 @@ async def ask_fund_stream(request: AskRequest, auth: AuthContext = Depends(get_a
         previous_messages = request.previous_messages or []
         
         # Debug logging - DETAILED
-        print(f"[DEBUG] ========== /ask/stream REQUEST ==========")
-        print(f"[DEBUG] Question: {question}")
-        print(f"[DEBUG] Resolved question: {resolved_question}")
-        print(f"[DEBUG] Previous messages count: {len(previous_messages)}")
         if previous_messages:
-            print(f"[DEBUG] First message: {previous_messages[0].role}: {previous_messages[0].content[:200]}")
-            print(f"[DEBUG] Last message: {previous_messages[-1].role}: {previous_messages[-1].content[:200]}")
             # Print all messages for debugging
-            for i, msg in enumerate(previous_messages):
-                print(f"[DEBUG] Message {i+1}: {msg.role}: {msg.content[:100]}...")
-        else:
-            print(f"[DEBUG] ⚠️⚠️⚠️ WARNING: NO PREVIOUS MESSAGES PROVIDED! ⚠️⚠️⚠️")
-        print(f"[DEBUG] =========================================")
         
         prompt = build_answer_prompt(resolved_question, request.sources or [], request.decisions or [], previous_messages, request.connections or [])
         
@@ -5212,7 +5158,6 @@ async def ask_fund_stream(request: AskRequest, auth: AuthContext = Depends(get_a
             except Exception as e:
                 import traceback
                 error_trace = traceback.format_exc()
-                print(f"Stream generation error: {error_trace}")
                 error_msg = str(e)[:500]
                 yield f'data: {{"error": "{error_msg}"}}\n\n'
         
@@ -5233,7 +5178,6 @@ async def ask_fund_stream(request: AskRequest, auth: AuthContext = Depends(get_a
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
-        print(f"Stream endpoint error: {error_trace}")
         raise HTTPException(
             status_code=500,
             detail=f"Streaming error: {str(e)[:200]}"
@@ -5341,7 +5285,6 @@ async def generate_embedding_voyage(text: str, input_type: str) -> List[float]:
         )
 
     # Log which model is being used for debugging
-    print(f"[VOYAGE] Generating embedding with model: {VOYAGE_EMBEDDING_MODEL}, input_type: {input_type}")
 
     payload = {
         "model": VOYAGE_EMBEDDING_MODEL,
@@ -5374,7 +5317,6 @@ async def generate_embedding_voyage(text: str, input_type: str) -> List[float]:
             raise HTTPException(status_code=502, detail="No embedding returned from VoyageAI.")
 
         # Log dimension for debugging
-        print(f"[VOYAGE] Generated embedding with {len(embedding)} dimensions")
         
         return normalize_embedding(embedding)
 
@@ -5433,13 +5375,11 @@ async def rerank_with_voyage(
                 json=payload,
             )
             if response.status_code >= 400:
-                print(f"[RERANK] Voyage rerank API error ({response.status_code}): {response.text[:300]}")
                 return [{"index": i, "relevance_score": 1.0, "document": d} for i, d in enumerate(documents[:top_k])]
 
             data = response.json() or {}
             results = data.get("data", [])
             total_tokens = data.get("usage", {}).get("total_tokens", 0)
-            print(f"[RERANK] Reranked {len(documents)} docs → top {top_k}, model={rerank_model}, tokens={total_tokens}")
             return [
                 {
                     "index": r.get("index", 0),
@@ -5449,7 +5389,6 @@ async def rerank_with_voyage(
                 for r in results
             ]
     except Exception as e:
-        print(f"[RERANK] Reranking failed (falling back to original order): {e}")
         return [{"index": i, "relevance_score": 1.0, "document": d} for i, d in enumerate(documents[:top_k])]
 
 
@@ -5633,10 +5572,8 @@ async def web_search_endpoint(request: WebSearchRequest):
                             url=url,
                         ))
 
-        print(f"[WEB-SEARCH] query='{query}', results={len(results)}")
 
     except Exception as e:
-        print(f"[WEB-SEARCH] Error: {e}")
         # Return empty results rather than failing the whole request
         pass
 
@@ -5745,11 +5682,9 @@ async def multi_query_endpoint(request: MultiQueryRequest):
                 break
 
         all_queries = [question] + clean_variants
-        print(f"[MULTI-QUERY] Generated {len(all_queries)} variants: {all_queries}")
         return MultiQueryResponse(queries=all_queries, model_used=str(model_used))
 
     except Exception as e:
-        print(f"[MULTI-QUERY] Generation failed: {e} — returning original only")
         return MultiQueryResponse(queries=[question], model_used="")
 
 
@@ -5856,7 +5791,7 @@ async def analyze_query_endpoint(request: AnalyzeQueryRequest):
                 rewritten_query=rewritten,
             )
         except Exception as e:
-            print(f"[ROUTER] Query analysis failed: {e}")
+            pass
 
     # Fallback: keyword-based heuristic
     q = question.lower()
@@ -5986,7 +5921,6 @@ async def embed_query(request: EmbedRequest):
                     break
             except Exception as provider_err:
                 last_error = provider_err
-                print(f"[EMBED] ⚠️ {provider} failed: {provider_err}, trying next...")
                 continue
 
         if embedding is None:
@@ -6101,7 +6035,6 @@ async def extract_entities(request: EntityExtractionRequest):
         
         # Build content blocks — PDF visual or text-only
         if has_pdf:
-            print(f"[EXTRACT-ENTITIES] Using Claude native PDF reading for: {request.document_title}")
             content_blocks = [
                 {
                     "type": "document",
@@ -6121,7 +6054,6 @@ async def extract_entities(request: EntityExtractionRequest):
                 },
             ]
         else:
-            print(f"[EXTRACT-ENTITIES] Using text-only extraction for: {request.document_title}")
             content_blocks = [
                 {
                     "type": "text",
@@ -6142,7 +6074,6 @@ async def extract_entities(request: EntityExtractionRequest):
             messages=[{"role": "user", "content": content_blocks}],
         )
         raw = "".join(b.text for b in message.content if hasattr(b, "text"))
-        print(f"[EXTRACT-ENTITIES] Claude response length: {len(raw)} chars")
 
         try:
             data = json.loads(raw)
@@ -6151,7 +6082,6 @@ async def extract_entities(request: EntityExtractionRequest):
             if json_match:
                 data = json.loads(json_match.group())
             else:
-                print(f"[EXTRACT-ENTITIES] Could not parse JSON from: {raw[:300]}")
                 return EntityExtractionResponse()
 
         entities = [
@@ -6170,7 +6100,6 @@ async def extract_entities(request: EntityExtractionRequest):
             if k.get("company_name") and k.get("metric_name")
         ]
 
-        print(f"[EXTRACT-ENTITIES] ✅ Found {len(entities)} entities, {len(relationships)} relationships, {len(kpis)} KPIs")
         return EntityExtractionResponse(
             entities=entities,
             relationships=relationships,
@@ -6178,7 +6107,6 @@ async def extract_entities(request: EntityExtractionRequest):
         )
 
     except Exception as e:
-        print(f"[EXTRACT] Entity extraction failed: {e}")
         return EntityExtractionResponse()
 
 
@@ -6365,7 +6293,6 @@ async def extract_company_properties(request: CompanyPropertyExtractionRequest):
         if has_pdf:
             # BEST PATH: Send PDF as a native document block — Claude reads it visually
             # This captures tables, charts, multi-column layouts, logos, etc.
-            print(f"[EXTRACT-PROPS] Using Claude native PDF reading for: {request.document_title}")
             content_blocks = [
                 {
                     "type": "document",
@@ -6387,7 +6314,6 @@ async def extract_company_properties(request: CompanyPropertyExtractionRequest):
             ]
         else:
             # FALLBACK: Text-only extraction
-            print(f"[EXTRACT-PROPS] Using text-only extraction for: {request.document_title}")
             content_blocks = [
                 {
                     "type": "text",
@@ -6408,7 +6334,6 @@ async def extract_company_properties(request: CompanyPropertyExtractionRequest):
             messages=[{"role": "user", "content": content_blocks}],
         )
         raw = "".join(b.text for b in message.content if hasattr(b, "text"))
-        print(f"[EXTRACT-PROPS] Claude response length: {len(raw)} chars")
 
         # Parse JSON from response
         try:
@@ -6419,7 +6344,6 @@ async def extract_company_properties(request: CompanyPropertyExtractionRequest):
             if json_match:
                 data = json.loads(json_match.group())
             else:
-                print(f"[EXTRACT-PROPS] Could not parse JSON from response: {raw[:300]}")
                 return CompanyPropertyExtractionResponse(document_type_detected=doc_type)
 
         properties = data.get("properties", data)
@@ -6483,7 +6407,6 @@ async def extract_company_properties(request: CompanyPropertyExtractionRequest):
         )
 
     except Exception as e:
-        print(f"[EXTRACT-PROPS] Company property extraction failed: {e}")
         return CompanyPropertyExtractionResponse(document_type_detected=doc_type)
 
 
@@ -6572,13 +6495,11 @@ async def extract_company_properties_stream(request: CompanyPropertyExtractionRe
         client = _get_anthropic_async_client()
 
         if has_pdf:
-            print(f"[EXTRACT-PROPS-STREAM] Using Claude native PDF for: {request.document_title}")
             content_blocks = [
                 {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": request.pdf_base64}},
                 {"type": "text", "text": f"Document title: {request.document_title}\nType: {doc_type}\n{field_guidance}\n{existing_context}\n{json_instructions}"},
             ]
         else:
-            print(f"[EXTRACT-PROPS-STREAM] Using text-only for: {request.document_title}")
             content_blocks = [
                 {"type": "text", "text": f"Document title: {request.document_title}\nType: {doc_type}\n{field_guidance}\n{existing_context}\nText:\n---\n{text}\n---\n\n{json_instructions}"},
             ]
@@ -6590,7 +6511,6 @@ async def extract_company_properties_stream(request: CompanyPropertyExtractionRe
             messages=[{"role": "user", "content": content_blocks}],
         )
         raw = "".join(b.text for b in message.content if hasattr(b, "text"))
-        print(f"[EXTRACT-PROPS-STREAM] Claude response: {len(raw)} chars")
 
         try:
             data = json.loads(raw)
@@ -6640,7 +6560,6 @@ async def extract_company_properties_stream(request: CompanyPropertyExtractionRe
                 except (ValueError, TypeError):
                     clean_confidence[f] = 0.5
 
-        print(f"[EXTRACT-PROPS-STREAM] ✅ Extracted {len(clean_props)} properties")
         return {"properties": clean_props, "confidence": clean_confidence, "document_type_detected": doc_type}
 
     async def generate():
@@ -6654,7 +6573,6 @@ async def extract_company_properties_stream(request: CompanyPropertyExtractionRe
             result = await task
             yield f"data: {json.dumps({'status': 'done', 'result': result})}\n\n"
         except Exception as e:
-            print(f"[EXTRACT-PROPS-STREAM] Error: {e}")
             yield f"data: {json.dumps({'status': 'error', 'error': str(e)})}\n\n"
 
     return StreamingResponse(
@@ -6704,13 +6622,11 @@ async def extract_entities_stream(request: EntityExtractionRequest):
         client = _get_anthropic_async_client()
 
         if has_pdf:
-            print(f"[EXTRACT-ENTITIES-STREAM] Using Claude native PDF for: {request.document_title}")
             content_blocks = [
                 {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": request.pdf_base64}},
                 {"type": "text", "text": f"Document title: {request.document_title}\nType: {request.document_type or 'pitch_deck'}\n\n{extraction_instructions}"},
             ]
         else:
-            print(f"[EXTRACT-ENTITIES-STREAM] Using text-only for: {request.document_title}")
             content_blocks = [
                 {"type": "text", "text": f"Document title: {request.document_title}\nType: {request.document_type or 'unknown'}\n\nText:\n{text}\n\n{extraction_instructions}"},
             ]
@@ -6722,7 +6638,6 @@ async def extract_entities_stream(request: EntityExtractionRequest):
             messages=[{"role": "user", "content": content_blocks}],
         )
         raw = "".join(b.text for b in message.content if hasattr(b, "text"))
-        print(f"[EXTRACT-ENTITIES-STREAM] Claude response: {len(raw)} chars")
 
         try:
             data = json.loads(raw)
@@ -6735,7 +6650,6 @@ async def extract_entities_stream(request: EntityExtractionRequest):
             "relationships": [r for r in data.get("relationships", []) if r.get("source_name") and r.get("target_name")],
             "kpis": [k for k in data.get("kpis", []) if k.get("company_name") and k.get("metric_name")],
         }
-        print(f"[EXTRACT-ENTITIES-STREAM] ✅ Found {len(result['entities'])} entities, {len(result['relationships'])} rels, {len(result['kpis'])} KPIs")
         return result
 
     async def generate():
@@ -6748,7 +6662,6 @@ async def extract_entities_stream(request: EntityExtractionRequest):
             result = await task
             yield f"data: {json.dumps({'status': 'done', 'result': result})}\n\n"
         except Exception as e:
-            print(f"[EXTRACT-ENTITIES-STREAM] Error: {e}")
             yield f"data: {json.dumps({'status': 'error', 'error': str(e)})}\n\n"
 
     return StreamingResponse(
@@ -6815,7 +6728,6 @@ async def contextualize_chunk(request: ContextualChunkRequest):
         else:
             header = ""
     except Exception as e:
-        print(f"[CONTEXTUAL] Header generation failed: {e}")
         header = ""
 
     enriched = f"{header}\n\n{request.chunk_text}" if header else request.chunk_text
@@ -6913,11 +6825,9 @@ async def agentic_chunk(request: AgenticChunkRequest):
         if not sections:
             raise ValueError("No valid sections parsed from LLM output")
 
-        print(f"[AGENTIC-CHUNK] Split '{title}' into {len(sections)} sections: {[s.label for s in sections]}")
         return AgenticChunkResponse(sections=sections, model_used=str(model_used), fallback=False)
 
     except Exception as e:
-        print(f"[AGENTIC-CHUNK] LLM chunking failed for '{title}': {e} — falling back to paragraphs")
         sections = _paragraph_fallback(doc_text, max_sections)
         return AgenticChunkResponse(sections=sections, model_used="", fallback=True)
 
@@ -7103,18 +7013,15 @@ async def suggest_connections(request: SuggestConnectionsRequest, auth: AuthCont
     """
     # Check Anthropic availability with detailed logging
     if not _anthropic_sdk_available:
-        print("[suggest-connections] ❌ Anthropic SDK not installed")
         return SuggestConnectionsResponse(
             suggestions=[],
             context_summary="Connection suggestions require Anthropic SDK. Please install: pip install anthropic"
         )
     if not ANTHROPIC_API_KEY:
-        print("[suggest-connections] ❌ ANTHROPIC_API_KEY not set in environment")
         return SuggestConnectionsResponse(
             suggestions=[],
             context_summary="Connection suggestions require Anthropic API key. Please set ANTHROPIC_API_KEY in your environment variables."
         )
-    print(f"[suggest-connections] ✅ Anthropic SDK available, API key: {'Set' if ANTHROPIC_API_KEY else 'NOT SET'}")
 
     # Build context about existing connections
     existing_lines: List[str] = []
@@ -7222,7 +7129,6 @@ If you cannot suggest any meaningful connections, return an empty array: []"""
         return SuggestConnectionsResponse(suggestions=[], context_summary="Claude did not return structured suggestions.")
 
     except Exception as e:
-        print(f"[suggest-connections] Error: {e}")
         raise HTTPException(status_code=502, detail=f"Connection suggestion failed: {str(e)}")
 
 
@@ -7270,7 +7176,6 @@ async def ingest_google_drive(request: GoogleDriveIngestRequest):
         
         # Log if content is empty
         if not content or len(content.strip()) == 0:
-            print(f"WARNING: Google Drive API returned empty content for {file_id}. Status: {res.status_code}")
             content = f"[Empty content from Google Drive file: {file_id}]"
 
     title = f"{kind}-{file_id[:8]}"
@@ -7282,6 +7187,38 @@ async def ingest_google_drive(request: GoogleDriveIngestRequest):
 # ──────────────────────────────────────────────────────────────────────────────
 
 GDRIVE_API = "https://www.googleapis.com/drive/v3/files"
+GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+
+
+@app.post("/gdrive/refresh-token", response_model=GDriveRefreshTokenResponse)
+async def gdrive_refresh_token(request: GDriveRefreshTokenRequest):
+    """Exchange a Google refresh_token for a new access_token. Uses GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET."""
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        raise HTTPException(
+            status_code=503,
+            detail="Google OAuth refresh not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on the server.",
+        )
+    body = {
+        "grant_type": "refresh_token",
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "refresh_token": request.refresh_token,
+    }
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        res = await client.post(GOOGLE_OAUTH_TOKEN_URL, data=body)
+        if res.status_code >= 400:
+            raise HTTPException(
+                status_code=401,
+                detail=f"Google token refresh failed: {res.text[:300]}",
+            )
+        data = res.json()
+    access_token = data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=502, detail="Google did not return an access_token.")
+    return GDriveRefreshTokenResponse(access_token=access_token)
+
 
 @app.post("/gdrive/list-folders", response_model=GDriveListFoldersResponse)
 async def gdrive_list_folders(request: GDriveListFoldersRequest):
@@ -7848,29 +7785,9 @@ async def validate_data(request: ValidationRequest):
 @app.on_event("startup")
 async def startup_event():
     """Log configuration on startup for debugging"""
-    print("=" * 60)
-    print("🚀 Company Second Brain V2 — Starting")
-    print("=" * 60)
-    print(f"📐 ARCHITECTURE:")
-    print(f"   Response class: ORJSONResponse {'✅' if 'orjson' in str(type(ORJSONResponse)) else '(fallback: JSONResponse)'}")
-    print(f"   Anthropic SDK: {'✅ INSTALLED' if _anthropic_sdk_available else '❌ NOT INSTALLED'}")
-    print(f"   Anthropic API Key: {'✅ Set' if ANTHROPIC_API_KEY else '❌ NOT SET'}")
     if ANTHROPIC_API_KEY:
         # Show first/last 4 chars for verification (don't expose full key)
         key_preview = f"{ANTHROPIC_API_KEY[:4]}...{ANTHROPIC_API_KEY[-4:]}" if len(ANTHROPIC_API_KEY) > 8 else "***"
-        print(f"   API Key Preview: {key_preview}")
-    print(f"   JWT Auth: {'🔒 ENFORCED' if ENFORCE_AUTH else '🔓 Optional (dev mode)'}")
-    print(f"📊 EMBEDDING CONFIGURATION:")
-    print(f"   Provider: {EMBEDDINGS_PROVIDER}")
-    if EMBEDDINGS_PROVIDER == "voyage":
-        print(f"   Voyage Model: {VOYAGE_EMBEDDING_MODEL}")
-        print(f"   Voyage API Key: {'✅ Set' if VOYAGE_API_KEY else '❌ NOT SET'}")
-    elif EMBEDDINGS_PROVIDER == "openai":
-        print(f"   OpenAI Model: {OPENAI_EMBEDDING_MODEL}")
-        print(f"   OpenAI API Key: {'✅ Set' if OPENAI_API_KEY else '❌ NOT SET'}")
-    print(f"   Embedding Dimensions: {EMBEDDING_DIM}")
-    print(f"🔄 RERANKING:")
-    print("=" * 60)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -7910,7 +7827,7 @@ async def setup_company(request: CompanySetupRequest):
                 "system_prompt": system_prompt,
             }).eq("id", request.organization_id).execute()
     except Exception as e:
-        print(f"[setup_company] DB update failed: {e}")
+        pass
 
     return CompanySetupResponse(
         system_prompt=system_prompt,
@@ -7942,7 +7859,7 @@ async def get_company_context(org_id: str):
                     "system_prompt": result.data.get("system_prompt", "") or _FALLBACK_PROMPT,
                 }
     except Exception as e:
-        print(f"[get_company_context] DB read failed: {e}")
+        pass
 
     return {
         "organization_id": org_id,
