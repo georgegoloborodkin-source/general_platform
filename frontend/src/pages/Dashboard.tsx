@@ -1697,6 +1697,7 @@ function SourcesTab({
   const [lastDriveSyncAt, setLastDriveSyncAt] = useState<string | null>(null);
   const [isSyncingCategoriesFromDrive, setIsSyncingCategoriesFromDrive] = useState(false);
   const [selectedFolderIds, setSelectedFolderIds] = useState<Set<string>>(new Set());
+  const [driveConnectCooldownUntil, setDriveConnectCooldownUntil] = useState(0);
   // Auto-sync interval (15 minutes)
   const autoSyncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isSyncingDriveRef = useRef(false);
@@ -1721,6 +1722,27 @@ function SourcesTab({
   useEffect(() => {
     isSyncingDriveRef.current = isSyncingDrive;
   }, [isSyncingDrive]);
+
+  useEffect(() => {
+    if (driveConnectCooldownUntil <= 0) return;
+    const remaining = driveConnectCooldownUntil - Date.now();
+    if (remaining <= 0) {
+      setDriveConnectCooldownUntil(0);
+      return;
+    }
+    const t = window.setTimeout(() => setDriveConnectCooldownUntil(0), remaining);
+    return () => clearTimeout(t);
+  }, [driveConnectCooldownUntil]);
+
+  const [driveConnectCooldownTick, setDriveConnectCooldownTick] = useState(0);
+  useEffect(() => {
+    if (driveConnectCooldownUntil <= 0 || Date.now() >= driveConnectCooldownUntil) return;
+    const id = setInterval(() => setDriveConnectCooldownTick(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [driveConnectCooldownUntil]);
+
+  const isDriveConnectOnCooldown = driveConnectCooldownUntil > 0 && Date.now() < driveConnectCooldownUntil;
+  const driveConnectCooldownSeconds = isDriveConnectOnCooldown ? Math.ceil((driveConnectCooldownUntil - Date.now()) / 1000) : 0;
   
   // Debug: log env vars (remove in production)
   useEffect(() => {
@@ -1904,11 +1926,21 @@ function SourcesTab({
     let accessToken = await getGoogleAccessToken();
     if (!accessToken) accessToken = await getGoogleAccessToken(true);
     if (!accessToken) {
-      toast({
-        title: "Connect Google Drive",
-        description: "Redirecting to Google to grant Drive access…",
-      });
-      await triggerGoogleOAuthForDrive();
+      try {
+        toast({
+          title: "Connect Google Drive",
+          description: "Redirecting to Google to grant Drive access…",
+        });
+        await triggerGoogleOAuthForDrive();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setDriveConnectCooldownUntil(Date.now() + 65000);
+        toast({
+          title: "Could not connect Google Drive",
+          description: msg,
+          variant: "destructive",
+        });
+      }
       return;
     }
     try {
@@ -2020,8 +2052,14 @@ function SourcesTab({
     let accessToken = await getGoogleAccessToken();
     if (!accessToken) accessToken = await getGoogleAccessToken(true);
     if (!accessToken) {
-      toast({ title: "Connect Google Drive", description: "Redirecting to Google to grant Drive access…" });
-      await triggerGoogleOAuthForDrive();
+      try {
+        toast({ title: "Connect Google Drive", description: "Redirecting to Google to grant Drive access…" });
+        await triggerGoogleOAuthForDrive();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setDriveConnectCooldownUntil(Date.now() + 65000);
+        toast({ title: "Could not connect Google Drive", description: msg, variant: "destructive" });
+      }
       return;
     }
     const eventId = activeEventId || (await ensureActiveEventId());
@@ -3650,11 +3688,17 @@ function SourcesTab({
       let accessToken = await getGoogleAccessToken();
       if (!accessToken) accessToken = await getGoogleAccessToken(true);
       if (!accessToken) {
-        toast({
-          title: "Connect Google Drive",
-          description: "Redirecting to Google to grant Drive access…",
-        });
-        await triggerGoogleOAuthForDrive();
+        try {
+          toast({
+            title: "Connect Google Drive",
+            description: "Redirecting to Google to grant Drive access…",
+          });
+          await triggerGoogleOAuthForDrive();
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          setDriveConnectCooldownUntil(Date.now() + 65000);
+          toast({ title: "Could not connect Google Drive", description: msg, variant: "destructive" });
+        }
         return;
       }
       const result = await ingestGoogleDrive(url.trim(), accessToken);
@@ -3875,11 +3919,17 @@ function SourcesTab({
     let accessToken = await getGoogleAccessToken();
     if (!accessToken) accessToken = await getGoogleAccessToken(true);
     if (!accessToken) {
-      toast({
-        title: "Connect Google Drive",
-        description: "Redirecting to Google to grant Drive access…",
-      });
-      await triggerGoogleOAuthForDrive();
+      try {
+        toast({
+          title: "Connect Google Drive",
+          description: "Redirecting to Google to grant Drive access…",
+        });
+        await triggerGoogleOAuthForDrive();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setDriveConnectCooldownUntil(Date.now() + 65000);
+        toast({ title: "Could not connect Google Drive", description: msg, variant: "destructive" });
+      }
       return;
     }
     try {
@@ -4051,13 +4101,13 @@ function SourcesTab({
             </div>
             <div className="flex items-end">
               <div className="flex w-full flex-col gap-2">
-                <Button onClick={openDrivePicker} variant="outline" className="w-full border border-slate-200 bg-white text-slate-900 hover:bg-blue-500/10 hover:border-blue-500 hover:text-blue-600 font-bold">
+                <Button onClick={openDrivePicker} variant="outline" disabled={isDriveConnectOnCooldown} className="w-full border border-slate-200 bg-white text-slate-900 hover:bg-blue-500/10 hover:border-blue-500 hover:text-blue-600 font-bold disabled:opacity-50">
                   <Folder className="h-4 w-4 mr-2" />
-                  Choose from Drive
+                  {isDriveConnectOnCooldown ? `Wait ${driveConnectCooldownSeconds}s before retrying` : "Choose from Drive"}
                 </Button>
-                <Button onClick={handleImportDrive} disabled={isImportingDrive} className="w-full bg-blue-600 text-slate-900 hover:bg-blue-600/80 font-bold border-2 border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-500/20 disabled:opacity-50">
+                <Button onClick={handleImportDrive} disabled={isImportingDrive || isDriveConnectOnCooldown} className="w-full bg-blue-600 text-slate-900 hover:bg-blue-600/80 font-bold border-2 border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-500/20 disabled:opacity-50">
                   {isImportingDrive ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
-                  Import Drive
+                  {isDriveConnectOnCooldown ? `Wait ${driveConnectCooldownSeconds}s` : "Import Drive"}
                 </Button>
               </div>
             </div>
@@ -4214,10 +4264,11 @@ function SourcesTab({
                     variant="outline"
                     size="sm"
                     onClick={connectDrivePortfolioFolder}
-                    className="border border-slate-200 bg-white text-slate-500 hover:bg-blue-500/10 hover:border-blue-500 hover:text-blue-600 font-bold text-[10px] h-7 px-2"
+                    disabled={isDriveConnectOnCooldown}
+                    className="border border-slate-200 bg-white text-slate-500 hover:bg-blue-500/10 hover:border-blue-500 hover:text-blue-600 font-bold text-[10px] h-7 px-2 disabled:opacity-50"
                   >
                     <FolderPlus className="h-3.5 w-3.5 mr-1" />
-                    Add Folder
+                    {isDriveConnectOnCooldown ? `Wait ${driveConnectCooldownSeconds}s` : "Add Folder"}
                   </Button>
                   <Button
                     size="sm"
@@ -4294,11 +4345,11 @@ function SourcesTab({
               <p className="text-sm text-slate-400 font-mono">No Drive folder connected yet.</p>
               <Button
                 onClick={connectDrivePortfolioFolder}
-                disabled={!canImport}
+                disabled={!canImport || isDriveConnectOnCooldown}
                 className="bg-blue-600 text-slate-900 hover:bg-blue-600/80 font-bold border-2 border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-500/20 disabled:opacity-50"
               >
                 <Folder className="h-4 w-4 mr-2" />
-                Connect Drive Folder
+                {isDriveConnectOnCooldown ? `Wait ${driveConnectCooldownSeconds}s before retrying` : "Connect Drive Folder"}
               </Button>
               <p className="text-[10px] text-slate-400 font-mono">
                 Pick a root folder from Google Drive. Each sub-folder inside it will be treated as a separate project.
