@@ -1901,7 +1901,8 @@ function SourcesTab({
       });
       return;
     }
-    const accessToken = await getGoogleAccessToken();
+    let accessToken = await getGoogleAccessToken();
+    if (!accessToken) accessToken = await getGoogleAccessToken(true);
     if (!accessToken) {
       toast({
         title: "Connect Google Drive",
@@ -2018,6 +2019,7 @@ function SourcesTab({
       return;
     }
     let accessToken = await getGoogleAccessToken();
+    if (!accessToken) accessToken = await getGoogleAccessToken(true);
     if (!accessToken) {
       toast({ title: "Connect Google Drive", description: "Redirecting to Google to grant Drive access…" });
       await triggerGoogleOAuthForDrive();
@@ -2645,7 +2647,8 @@ function SourcesTab({
   const connectGmail = useCallback(async (query?: string) => {
     const eventId = activeEventId || (await ensureActiveEventId());
     if (!eventId) { toast({ title: "No active event", variant: "destructive" }); return; }
-    const token = await getGoogleAccessToken();
+    let token = await getGoogleAccessToken();
+    if (!token) token = await getGoogleAccessToken(true);
     if (!token) { toast({ title: "Google access needed", description: "Sign in again to grant Gmail read access.", variant: "destructive" }); return; }
 
     // Verify token works for Gmail
@@ -2688,7 +2691,8 @@ function SourcesTab({
   const syncGmailInbox = useCallback(async () => {
     const eventId = activeEventId || (await ensureActiveEventId());
     if (!eventId) { toast({ title: "No active event", variant: "destructive" }); return; }
-    const token = await getGoogleAccessToken();
+    let token = await getGoogleAccessToken();
+    if (!token) token = await getGoogleAccessToken(true);
     if (!token) { toast({ title: "Google access needed", description: "Sign in again to grant Gmail access.", variant: "destructive" }); return; }
 
     setIsSyncingGmail(true);
@@ -3678,7 +3682,8 @@ function SourcesTab({
     }
     setIsImportingDrive(true);
     try {
-      const accessToken = await getGoogleAccessToken();
+      let accessToken = await getGoogleAccessToken();
+      if (!accessToken) accessToken = await getGoogleAccessToken(true);
       if (!accessToken) {
         toast({
           title: "Connect Google Drive",
@@ -3903,7 +3908,8 @@ function SourcesTab({
       });
       return;
     }
-    const accessToken = await getGoogleAccessToken();
+    let accessToken = await getGoogleAccessToken();
+    if (!accessToken) accessToken = await getGoogleAccessToken(true);
     if (!accessToken) {
       toast({
         title: "Connect Google Drive",
@@ -8438,44 +8444,53 @@ export default function Dashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile, activeEventId, activeThread, ensureActiveEventId, isInitialLoad, readLocalChatCache, writeLocalChatCache]);
 
-  const getGoogleAccessToken = useCallback(async (forceRefresh = false) => {
-    if (forceRefresh) {
-      try {
-        await supabase.auth.refreshSession();
-      } catch {
-        // ignore
+  const getGoogleAccessToken = useCallback(async (forceRefresh = false): Promise<string | null> => {
+    const tryResolve = async (doRefreshSession: boolean): Promise<string | null> => {
+      if (doRefreshSession) {
+        try {
+          await supabase.auth.refreshSession();
+        } catch {
+          // ignore
+        }
       }
-    }
-    const { data } = await supabase.auth.getSession();
-    const session = data.session;
-    const providerToken = session?.provider_token ?? null;
-    const providerRefreshToken = session?.provider_refresh_token ?? null;
-    if (providerToken || providerRefreshToken) {
-      saveGoogleProviderTokens(providerToken, providerRefreshToken);
-    }
-
-    // 1) Backend-stored token (from backend OAuth flow) — try first so "Add Google Drive folder" works without Supabase provider_token
-    if (session?.access_token) {
-      const backendToken = await getGoogleAccessTokenFromBackend(session.access_token);
-      if (backendToken) return backendToken;
-    }
-
-    // 2) Session or stored provider token
-    if (providerToken && !forceRefresh) return providerToken;
-    const storedAccess = getStoredGoogleAccessToken();
-    if (storedAccess && !forceRefresh) return storedAccess;
-
-    // 3) Refresh via backend
-    const refreshToken = providerRefreshToken || getStoredGoogleRefreshToken();
-    if (refreshToken) {
-      const newToken = await refreshGoogleAccessToken(refreshToken);
-      if (newToken) {
-        setStoredGoogleAccessToken(newToken);
-        return newToken;
+      const { data } = await supabase.auth.getSession();
+      const session = data.session;
+      const providerToken = session?.provider_token ?? null;
+      const providerRefreshToken = session?.provider_refresh_token ?? null;
+      if (providerToken || providerRefreshToken) {
+        saveGoogleProviderTokens(providerToken, providerRefreshToken);
       }
-    }
 
-    return providerToken ?? null;
+      // 1) Backend-stored token (from backend OAuth flow)
+      if (session?.access_token) {
+        const backendToken = await getGoogleAccessTokenFromBackend(session.access_token);
+        if (backendToken) return backendToken;
+      }
+
+      // 2) Session or stored provider token
+      if (providerToken && !forceRefresh) return providerToken;
+      const storedAccess = getStoredGoogleAccessToken();
+      if (storedAccess && !forceRefresh) return storedAccess;
+
+      // 3) Refresh via backend (so we don't ask user to re-login when token expired)
+      const refreshToken = providerRefreshToken || getStoredGoogleRefreshToken();
+      if (refreshToken) {
+        const newToken = await refreshGoogleAccessToken(refreshToken);
+        if (newToken) {
+          setStoredGoogleAccessToken(newToken);
+          return newToken;
+        }
+      }
+
+      return providerToken ?? null;
+    };
+
+    let token = await tryResolve(forceRefresh);
+    // If still no token, try once more after refreshing Supabase session (avoids re-login when session was stale)
+    if (!token) {
+      token = await tryResolve(true);
+    }
+    return token;
   }, []);
 
   const handleAutoLogDecision = useCallback(
