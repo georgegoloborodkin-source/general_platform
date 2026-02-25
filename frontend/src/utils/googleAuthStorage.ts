@@ -2,7 +2,7 @@
  * Persist Google OAuth provider tokens so we can use them after Supabase session
  * no longer includes them (Supabase does not persist provider_token/provider_refresh_token).
  */
-const STORAGE_KEY = "orbit_google_provider_tokens";
+const STORAGE_KEY = "company_google_provider_tokens";
 const ACCESS_TOKEN_MAX_AGE_MS = 58 * 60 * 1000; // 58 min (Google tokens ~1h; use longer so we rely on refresh less often)
 
 export interface StoredGoogleTokens {

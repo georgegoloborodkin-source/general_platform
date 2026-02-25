@@ -228,11 +228,11 @@
 }
 
 @layer components {
-  .orbit-void {
+  .platform-void {
     position: relative;
   }
 
-  .orbit-void::after {
+  .platform-void::after {
     content: "";
     position: absolute;
     inset: 0;
@@ -242,7 +242,7 @@
     mix-blend-mode: screen;
   }
 
-  .orbit-stat-heading {
+  .platform-stat-heading {
     font-family: Inter, "Helvetica Now Display", "Helvetica Neue", Arial, sans-serif;
     font-weight: 900;
     letter-spacing: -0.04em;
@@ -250,7 +250,7 @@
     font-size: clamp(1.4rem, 2.4vw, 2.6rem);
   }
 
-  .orbit-stat-number {
+  .platform-stat-number {
     font-family: "JetBrains Mono", "Space Grotesk", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
@@ -259,7 +259,7 @@
     transition: color 120ms ease;
   }
 
-  .orbit-stat-title {
+  .platform-stat-title {
     font-family: Inter, "Helvetica Now Display", "Helvetica Neue", Arial, sans-serif;
     font-weight: 900;
     letter-spacing: -0.04em;
@@ -267,7 +267,7 @@
     font-size: clamp(1rem, 1.4vw, 1.25rem);
   }
 
-  .orbit-stat-label {
+  .platform-stat-label {
     font-family: Inter, "Helvetica Now Display", "Helvetica Neue", Arial, sans-serif;
     font-size: 12px;
     letter-spacing: 0.2em;
@@ -275,7 +275,7 @@
     text-transform: uppercase;
   }
 
-  .orbit-accent-button {
+  .platform-accent-button {
     @apply inline-flex items-center gap-2 border-2 border-slate-200 px-4 py-2;
     background: transparent;
     color: #3b82f6;
@@ -285,31 +285,31 @@
     transition: color 120ms ease, border-color 120ms ease;
   }
 
-  .orbit-accent-button:hover {
+  .platform-accent-button:hover {
     color: #ffffff;
     border-color: #3b82f6;
   }
 
-  .orbit-accent-text {
+  .platform-accent-text {
     color: #3b82f6;
     font-weight: 700;
     text-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
     transition: text-shadow 0.3s ease;
   }
 
-  .orbit-accent-text:hover {
+  .platform-accent-text:hover {
     text-shadow: 0 0 20px rgba(59, 130, 246, 0.8), 0 0 30px rgba(59, 130, 246, 0.4);
   }
 
   /* Futuristic Glow Effects */
-  .orbit-glow {
+  .platform-glow {
     box-shadow: 
       0 0 20px rgba(59, 130, 246, 0.3),
       0 0 40px rgba(59, 130, 246, 0.2),
       inset 0 0 20px rgba(59, 130, 246, 0.1);
   }
 
-  .orbit-glow-hover:hover {
+  .platform-glow-hover:hover {
     box-shadow: 
       0 0 30px rgba(59, 130, 246, 0.5),
       0 0 60px rgba(59, 130, 246, 0.3),
@@ -323,8 +323,8 @@
   }
 
   /* Hardware Acceleration */
-  .orbit-void,
-  .orbit-void * {
+  .platform-void,
+  .platform-void * {
     will-change: transform;
     transform: translateZ(0);
   }

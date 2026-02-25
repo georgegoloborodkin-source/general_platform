@@ -101,9 +101,7 @@ export function sleep(ms: number): Promise<void> {
 export async function warmUpIngestion(): Promise<void> {
   try {
     const base = await resolveIngestionBaseUrl();
-    console.log("[DriveSync] Warming up ingestion service...");
     await fetchWithRetry(`${base}/health`, { method: "GET" }, 3, 2000);
-    console.log("[DriveSync] Ingestion service is awake.");
   } catch {
     console.warn("[DriveSync] Warm-up failed — will retry on first real request.");
   }
@@ -224,18 +222,31 @@ export async function ingestGoogleDrive(
 
 // ─── Google Drive Folder-Sync Helpers ────────────────────────────────────────
 
+const MY_TOKEN_404_CACHE_MS = 45_000; // avoid hammering backend when not connected
+let lastMyToken404At = 0;
+
+/** Clear the "my-token 404" cache so the next call will hit the backend (e.g. after user connects Drive). */
+export function clearMyToken404Cache(): void {
+  lastMyToken404At = 0;
+}
+
 /**
  * Get Google access token from backend (backend stores tokens after its own OAuth flow).
  * Pass the current Supabase session access_token. Returns null if not connected or on error.
+ * Caches 404 for a short time to avoid repeated requests and console noise.
  */
 export async function getGoogleAccessTokenFromBackend(supabaseAccessToken: string): Promise<string | null> {
+  if (Date.now() - lastMyToken404At < MY_TOKEN_404_CACHE_MS) return null;
   try {
     const base = await resolveIngestionBaseUrl();
     const res = await fetch(`${base}/gdrive/my-token`, {
       method: "GET",
       headers: { Authorization: `Bearer ${supabaseAccessToken}` },
     });
-    if (res.status === 404) return null; // not connected
+    if (res.status === 404) {
+      lastMyToken404At = Date.now();
+      return null; // not connected
+    }
     if (!res.ok) return null;
     const data = await res.json();
     return data.access_token || null;

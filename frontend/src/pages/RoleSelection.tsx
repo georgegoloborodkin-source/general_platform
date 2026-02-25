@@ -166,7 +166,7 @@ export default function RoleSelection({ userId, onComplete }: Props) {
     <div className="flex items-center justify-center min-h-screen p-4 bg-slate-950">
       <div className={cardClass}>
         <div className="text-center border-b border-slate-700/60 bg-slate-800/30 px-6 py-6">
-          <h1 className="text-2xl font-bold text-white">Welcome to Orbit Platform</h1>
+          <h1 className="text-2xl font-bold text-white">Welcome to Company Platform</h1>
           <p className="text-slate-400 text-base mt-1">
             Choose your role to get started
           </p>

@@ -191,14 +191,12 @@ AS $$
 DECLARE
   r RECORD;
   default_folders JSONB := '[
-    {"name": "Portfolio Companies", "category": "Portfolio Companies"},
-    {"name": "Investors", "category": "Funds"},
-    {"name": "Funds", "category": "Funds"},
+    {"name": "Companies", "category": "Companies"},
+    {"name": "Partners", "category": "Partners"},
     {"name": "Deals", "category": "Sourcing"},
     {"name": "Market Research", "category": "Sourcing"},
-    {"name": "Due Diligence", "category": "Portfolio Companies"},
-    {"name": "BD", "category": "BD"},
-    {"name": "Mentors / Corporates", "category": "Mentors / Corporates"}
+    {"name": "Due Diligence", "category": "Companies"},
+    {"name": "BD", "category": "BD"}
   ]'::jsonb;
   item JSONB;
   existing_names TEXT[];

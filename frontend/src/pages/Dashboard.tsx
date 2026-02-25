@@ -1724,8 +1724,6 @@ function SourcesTab({
   // Debug: log env vars (remove in production)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      console.log('Google API Key present:', !!googleApiKey);
-      console.log('Google Client ID present:', !!googleClientId);
     }
   }, [googleApiKey, googleClientId]);
 
@@ -1934,7 +1932,6 @@ function SourcesTab({
             if (!folder?.id) return;
             const folderId = folder.id;
             const folderName = folder.name || "Project folder";
-            console.log("[DriveSync] Connected folder:", folderName, folderId);
             
             // Add to folders list (avoid duplicates); new folder defaults to Projects
             const updatedFolders: DriveFolderEntry[] = [
@@ -2095,7 +2092,6 @@ function SourcesTab({
         allDescendantFolders.push({ id: rootFolder.id, name: rootFolder.name, path: rootPath });
         await collectDescendants(rootFolder.id, rootPath, MAX_FOLDER_DEPTH - 1);
       }
-      console.log(`[DriveSync] Recursive discovery: ${allDescendantFolders.length} folders from ${foldersToSync.length} root(s)`);
 
       // Resolve category for a path using:
       // 1. Root folder's explicit category (if multiple roots with different categories)
@@ -2157,7 +2153,6 @@ function SourcesTab({
         }
         if (i < allDescendantFolders.length - 1) await sleep(300); // throttle
       }
-      console.log(`[DriveSync] ${subFolders.length} folders with documents (from ${allDescendantFolders.length} total)`);
       if (subFolders.length === 0) {
         toast({ title: "No documents found", description: "No folders with documents found in the connected folder(s)." });
         setIsSyncingDrive(false);
@@ -2180,7 +2175,6 @@ function SourcesTab({
         const companyFolder = subFolders[fi];
         const companyName = companyFolder.name;
         setDriveSyncProgress({ phase: "Syncing companies...", current: fi + 1, total: subFolders.length, currentItem: companyName });
-        console.log(`[DriveSync] Processing folder: ${companyName} (${fi + 1}/${subFolders.length})`);
 
         let newFiles = 0;
         let updatedFiles = 0;
@@ -2189,7 +2183,6 @@ function SourcesTab({
         try {
           // 2. List files in this company folder
           const files = await withDriveAuthRetry(() => listDriveFiles(accessToken, companyFolder.id));
-          console.log(`[DriveSync] ${companyName}: ${files.length} files`);
 
           // 3. Ensure a source_folder exists for this company
           let platformFolderId: string | null = null;
@@ -2326,7 +2319,6 @@ function SourcesTab({
                   .single();
                 if (linkedDoc?.company_entity_id) {
                   companyEntityId = linkedDoc.company_entity_id;
-                  console.log(`[DriveSync] Doc already linked to entity ${companyEntityId} by extractEntities`);
                 }
 
                 // If not linked yet, try folder name or file title
@@ -2339,7 +2331,6 @@ function SourcesTab({
                   };
                   const entityName = isLikelyCompanyName(companyName) ? companyName : cleanFileTitle(fileTitle);
                   const normalizedName = normalizeCompanyNameForMatch(entityName);
-                  console.log(`[DriveSync] Looking up entity by name: "${entityName}" (folder: "${companyName}", file: "${fileTitle}")`);
                   const { data: entityArr } = await supabase
                     .from("kg_entities")
                     .select("id")
@@ -2360,7 +2351,6 @@ function SourcesTab({
                       .limit(1);
                     if (entByDoc?.[0]) {
                       companyEntityId = entByDoc[0].id;
-                      console.log(`[DriveSync] Found entity "${entByDoc[0].name}" by source_document_id`);
                     }
                   }
 
@@ -2401,7 +2391,6 @@ function SourcesTab({
                       .single();
                     if (!createErr && newEntity) {
                       companyEntityId = newEntity.id;
-                      console.log(`[DriveSync] Created company entity "${entityName}" (folder: "${companyName}")`);
                     }
                   }
 
@@ -2423,7 +2412,6 @@ function SourcesTab({
                     .single();
                   const currentEntityName = currentEntityRow?.name || fileTitle;
 
-                  console.log(`[DriveSync] Running property extraction for entity "${currentEntityName}" (${companyEntityId}), raw_content: ${(downloaded.raw_content || "").length} chars`);
                   const existing = await getEntityProperties(companyEntityId);
                   const extraction = await extractCompanyProperties({
                     rawContent: downloaded.raw_content,
@@ -2431,7 +2419,6 @@ function SourcesTab({
                     existingProperties: existing?.properties || {},
                   });
 
-                  console.log(`[DriveSync] Extraction result: ${Object.keys(extraction.properties).length} properties`);
 
                   if (Object.keys(extraction.properties).length > 0) {
                     // If AI identified a better company_name, rename the entity
@@ -2454,14 +2441,12 @@ function SourcesTab({
                           const targetId = existingByAiName[0].id;
                           await supabase.from("documents").update({ company_entity_id: targetId }).eq("id", docRow.id);
                           companyEntityId = targetId;
-                          console.log(`[DriveSync] Merged into existing entity "${aiCompanyName}" (was "${currentEntityName}")`);
                         } else {
                           // Rename entity to AI-detected name
                           await supabase
                             .from("kg_entities")
                             .update({ name: aiCompanyName, normalized_name: aiNorm })
                             .eq("id", companyEntityId);
-                          console.log(`[DriveSync] Renamed entity "${currentEntityName}" в†’ "${aiCompanyName}"`);
                         }
                       }
                       // Remove company_name from properties (it's stored as entity name, not a card field)
@@ -2476,7 +2461,6 @@ function SourcesTab({
                       docRow.id,
                       { isMeetingNotes },
                     );
-                    console.log(`[DriveSync] Card merge for ${aiCompanyName || currentEntityName}: ${mergeResult.updated.length} updated, ${mergeResult.skipped.length} skipped`);
                   } else {
                     console.warn(`[DriveSync] No properties extracted for "${currentEntityName}" from file "${file.name}"`);
                   }
@@ -2601,13 +2585,11 @@ function SourcesTab({
       if (lastDriveSyncAt) {
         const elapsed = Date.now() - new Date(lastDriveSyncAt).getTime();
         if (elapsed < SYNC_INTERVAL_MS) {
-          console.log("[DriveSync] Auto-sync skipped: last sync was less than 15 min ago");
           autoSyncFiredRef.current = true;
           return;
         }
       }
       autoSyncFiredRef.current = true;
-      console.log("[DriveSync] Auto-sync on login triggered");
       syncGoogleDriveFolder();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2625,13 +2607,10 @@ function SourcesTab({
     }
     // Set up interval
     if (!autoSyncIntervalRef.current) {
-      console.log("[DriveSync] Setting up auto-sync interval (every 15 min)");
       autoSyncIntervalRef.current = setInterval(() => {
         if (isSyncingDriveRef.current) {
-          console.log("[DriveSync] Auto-sync interval: skipped (already syncing)");
           return;
         }
-        console.log("[DriveSync] Auto-sync interval triggered");
         syncGoogleDriveFolderRef.current?.();
       }, SYNC_INTERVAL_MS);
     }
@@ -2899,7 +2878,6 @@ function SourcesTab({
         }
       }
       gmailAutoSyncFiredRef.current = true;
-      console.log("[GmailSync] Auto-sync on login triggered");
       syncGmailInbox();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2915,7 +2893,6 @@ function SourcesTab({
     if (!gmailAutoSyncIntervalRef.current) {
       gmailAutoSyncIntervalRef.current = setInterval(() => {
         if (isSyncingGmailRef.current) return;
-        console.log("[GmailSync] Auto-sync interval triggered");
         syncGmailInboxRef.current?.();
       }, SYNC_INTERVAL_MS);
     }
@@ -3116,7 +3093,6 @@ function SourcesTab({
             // Use shorter timeout to avoid blocking upload
             if (isCSVFile(file)) {
               try {
-                console.log("[CSV] Sending CSV to converter API for structured extractionвЂ¦");
                 const conversionPromise = convertFileWithAI(file);
                 const timeoutPromise = new Promise<never>((_, reject) => 
                   setTimeout(() => reject(new Error("CSV conversion timeout")), 10000)
@@ -3146,7 +3122,6 @@ function SourcesTab({
                 const encoded = btoa(raw);
                 if (encoded.length <= MAX_PDF_BASE64_BYTES) {
                   pdfBase64 = encoded;
-                  console.log("[PDF] Captured PDF base64:", Math.round(pdfBase64.length / 1024), "KB");
                 } else {
                   console.warn(`[PDF] PDF too large for extraction (${Math.round(encoded.length / 1024)}KB > ${MAX_PDF_BASE64_BYTES / 1024}KB), using text-only`);
                   // Still use text extraction for large PDFs
@@ -3158,7 +3133,6 @@ function SourcesTab({
               // Try client-side PDF extraction as a quick text fallback (for embeddings)
               try {
                 rawContent = await extractPdfTextClientSide(file);
-                console.log("[PDF] Client-side text extraction:", rawContent?.length || 0, "chars");
               } catch (err) {
                 console.warn("[PDF] Client-side extraction failed, will try AI conversion:", err);
               }
@@ -3176,7 +3150,6 @@ function SourcesTab({
                 rawContent = conversion.raw_content ?? rawContent; // Use AI content if better
                 extractedJson = conversion as unknown as Record<string, any>;
                 detectedType = conversion.detectedType || detectedType;
-                console.log("[AI] Conversion succeeded:", conversion.detectedType);
               } catch (err) {
                 console.warn("[AI] Conversion failed or timed out (non-fatal):", err);
                 // Continue without AI conversion - we have client-side content or will store file reference
@@ -3348,7 +3321,6 @@ function SourcesTab({
                 await new Promise((r) => setTimeout(r, 1000));
 
                 let companyEntityId = await getDocumentCompanyEntityId(docId);
-                console.log(`[AutoExtract] After DB trigger delay, entity ID: ${companyEntityId || "none"}`);
               
               // в”Ђв”Ђ Folder-based card creation в”Ђв”Ђ
               // Prefer folder name so card is "TBE" not "Copy of TBE Due Diligence"
@@ -3383,7 +3355,6 @@ function SourcesTab({
                       .from("documents")
                       .update({ company_entity_id: companyEntityId })
                       .eq("id", docId);
-                    console.log(`[FolderCard] Linked to existing ${entityTypeHint} entity "${companyName}"`);
                   } else {
                     // Create new entity
                     const { data: newEntity, error: createErr } = await supabase
@@ -3428,7 +3399,6 @@ function SourcesTab({
                         .from("documents")
                         .update({ company_entity_id: companyEntityId })
                         .eq("id", docId);
-                      console.log(`[FolderCard] Created ${folderInfo.entityTypeHint} entity "${companyName}" from folder "${folderInfo.currentSelectedFolder?.name}"`);
                     } else {
                       console.error("[FolderCard] Failed to create entity:", createErr);
                     }
@@ -3471,7 +3441,6 @@ function SourcesTab({
                         .from("documents")
                         .update({ company_entity_id: companyEntityId })
                         .eq("id", docId);
-                      console.log(`[AutoExtract] Linked to existing company entity "${companyName}"`);
                     } else {
                       // Create new entity
                       const { data: newEntity, error: createErr } = await supabase
@@ -3514,7 +3483,6 @@ function SourcesTab({
                           .from("documents")
                           .update({ company_entity_id: companyEntityId })
                           .eq("id", docId);
-                        console.log(`[AutoExtract] Created company entity "${companyName}" from document title`);
                       } else {
                         console.error("[AutoExtract] Failed to create entity from title:", createErr);
                       }
@@ -3526,7 +3494,6 @@ function SourcesTab({
               }
 
               if (companyEntityId) {
-                console.log(`[AutoExtract] Running property extraction for entity ${companyEntityId}... (PDF: ${filePdfBase64 ? "yes" : "no"})`);
                 const existing = await getEntityProperties(companyEntityId);
                 const extraction = await extractCompanyProperties({
                   rawContent: fileContent,
@@ -3535,7 +3502,6 @@ function SourcesTab({
                   pdfBase64: filePdfBase64 || undefined,
                 });
 
-                console.log(`[AutoExtract] Extraction result: ${Object.keys(extraction.properties).length} properties, type: ${extraction.document_type_detected}`);
 
                 if (Object.keys(extraction.properties).length > 0) {
                   // If AI identified a better company_name, rename the entity
@@ -3556,13 +3522,11 @@ function SourcesTab({
                         const targetId = existingByAiName[0].id;
                         await supabase.from("documents").update({ company_entity_id: targetId }).eq("id", docId);
                         companyEntityId = targetId;
-                        console.log(`[AutoExtract] Merged into existing entity "${aiName}" (was "${curNorm}")`);
                       } else {
                         await supabase
                           .from("kg_entities")
                           .update({ name: aiName, normalized_name: aiNorm })
                           .eq("id", companyEntityId);
-                        console.log(`[AutoExtract] Renamed entity "${curNorm}" в†’ "${aiName}"`);
                       }
                     }
                     delete extraction.properties.company_name;
@@ -3575,7 +3539,6 @@ function SourcesTab({
                     extraction.confidence,
                     docId,
                   );
-                  console.log(`[AutoExtract] вњ… ${aiName || mergeResult.companyName}: ${mergeResult.updated.length} updated, ${mergeResult.skipped.length} skipped, ${mergeResult.conflicts.length} conflicts`);
                   // Refresh company cards if callback available
                   if (onRefreshCompanyCards) {
                     onRefreshCompanyCards().catch(err => console.warn("[AutoExtract] Failed to refresh cards:", err));
@@ -3694,7 +3657,6 @@ function SourcesTab({
         return;
       }
       const result = await ingestGoogleDrive(url.trim(), accessToken);
-      console.log("Drive import result:", { title: result.title, hasContent: !!result.content, hasRaw: !!result.raw_content });
       
       // Extract better title from Google Drive
       const extractTitleFromGoogleDrive = (title: string | null | undefined, content: string | null | undefined, url: string): string => {
@@ -7556,7 +7518,6 @@ export default function Dashboard() {
         }
       }
       if (cancelled) return;
-      console.log(`[CIS] Backfill completed: ${updates.length - errors}/${updates.length} succeeded`);
       const { data } = await getSourceFoldersByEvent(activeEventId);
       setSourceFolders((data || []) as SourceFolder[]);
     })();
@@ -7766,7 +7727,6 @@ export default function Dashboard() {
       }
     }
 
-    console.log(`[SyncCategories] ${updates.length} updates across ${sourceFolders.length} source folders`);
     let errors = 0;
     for (const { id, category } of updates) {
       const { error } = await updateFolderCategory(id, category);
@@ -8278,7 +8238,6 @@ export default function Dashboard() {
       
       // If we found orphaned documents, link them to the current event
       if (orphanedDocs && orphanedDocs.length > 0 && event.id) {
-        console.log(`[DOCUMENTS] Found ${orphanedDocs.length} orphaned documents, linking to event ${event.id}`);
         const { error: updateError } = await supabase
           .from("documents")
           .update({ event_id: event.id })
@@ -8287,7 +8246,6 @@ export default function Dashboard() {
         if (updateError) {
           console.warn("[DOCUMENTS] Failed to link orphaned documents:", updateError);
         } else {
-          console.log(`[DOCUMENTS] вњ… Linked ${orphanedDocs.length} documents to event`);
           toast({
             title: "Documents linked",
             description: `Linked ${orphanedDocs.length} orphaned document(s) to current event.`,
@@ -8336,7 +8294,6 @@ export default function Dashboard() {
         
         // If we found orphaned sources, link them to the current event
         if (orphanedSources && orphanedSources.length > 0 && event.id) {
-          console.log(`[SOURCES] Found ${orphanedSources.length} orphaned sources, linking to event ${event.id}`);
           const orphanedIds = orphanedSources.map((s) => s.id);
           const { error: updateError } = await supabase
             .from("sources")
@@ -8346,7 +8303,6 @@ export default function Dashboard() {
           if (updateError) {
             console.warn("[SOURCES] Failed to link orphaned sources:", updateError);
           } else {
-            console.log(`[SOURCES] вњ… Linked ${orphanedSources.length} sources to event`);
             toast({
               title: "Sources linked",
               description: `Linked ${orphanedSources.length} orphaned source(s) to current event.`,
@@ -8434,7 +8390,6 @@ export default function Dashboard() {
           },
           (payload) => {
             if (cancelled) return;
-            console.log("Document change:", payload.eventType, payload.new || payload.old);
             
             if (payload.eventType === "INSERT" && payload.new) {
               const newDoc = payload.new as any;
@@ -8504,7 +8459,6 @@ export default function Dashboard() {
           },
           (payload) => {
             if (cancelled) return;
-            console.log("Decision change:", payload.eventType, payload.new || payload.old);
             
             if (payload.eventType === "INSERT" && payload.new) {
               const newDecision = payload.new as any;
@@ -8547,7 +8501,6 @@ export default function Dashboard() {
           },
           (payload) => {
             if (cancelled) return;
-            console.log("Source change:", payload.eventType, payload.new || payload.old);
             
             if (payload.eventType === "INSERT" && payload.new) {
               const newSource = payload.new as any;
@@ -8867,7 +8820,6 @@ export default function Dashboard() {
               created_by: userId,
             }).select();
             if (!error) {
-              console.log("[DEBUG] вњ… Saved chat message to DB:", { role: payload.role, contentLength: payload.content.length, threadId });
               return; // Success
             } else {
               console.error("[DEBUG] вќЊ Failed to save chat message:", error);
@@ -9057,7 +9009,6 @@ export default function Dashboard() {
         });
 
         if (!agenticResult.fallback && agenticResult.sections.length > 0) {
-          console.log(`[CHUNK] Agentic chunking succeeded: ${agenticResult.sections.length} sections (${agenticResult.model_used})`);
           const pairs: Array<{ parentText: string; childText: string; parentIndex: number; childIndex: number }> = [];
 
           agenticResult.sections.forEach((section, parentIndex) => {
@@ -9089,7 +9040,6 @@ export default function Dashboard() {
       }
 
       // в”Ђв”Ђ Fallback: semantic chunking (paragraph/sentence boundaries) в”Ђв”Ђ
-      console.log("[CHUNK] Using semantic fallback chunking");
       const semanticPairs = buildSemanticParentChildChunks(text);
       const parentCount = new Set(semanticPairs.map((p) => p.parentIndex)).size;
       return {
@@ -9137,7 +9087,6 @@ export default function Dashboard() {
           } else if (lowerTitle.includes("report") || lowerTitle.includes("analysis")) {
             detectedDocType = "report";
           }
-          console.log(`[EXTRACT] Extracting entities from doc ${documentId} вЂ” type: ${detectedDocType}, PDF: ${hasPdf ? `yes (${Math.round((pdfBase64ForExtraction?.length || 0) / 1024)}KB)` : "no"}, text: ${rawContent?.length || 0} chars, title: "${docTitle}"`);
           const extraction = await extractEntities({
             document_title: docTitle,
             document_text: rawContent?.slice(0, 12000) || "",
@@ -9149,7 +9098,6 @@ export default function Dashboard() {
             console.warn("[EXTRACT] No entities/relationships/KPIs found вЂ” check backend logs for errors");
             return;
           }
-          console.log(`[EXTRACT] вњ… Found ${extraction.entities.length} entities, ${extraction.relationships.length} relationships, ${extraction.kpis.length} KPIs`);
 
           const userId = profile?.id || user?.id;
           if (!userId) {
@@ -9245,7 +9193,6 @@ export default function Dashboard() {
             if (!ALLOWED_RELATION_TYPES.has(relationType)) {
               const mapped = RELATION_TYPE_MAP[relationType];
               if (mapped) {
-                console.log(`[EXTRACT] Mapped relation_type "${rel.relation_type}" в†’ "${mapped}"`);
                 relationType = mapped;
               } else {
                 // Default to partner_of for unknown types rather than failing
@@ -9283,7 +9230,6 @@ export default function Dashboard() {
               if (edgeErr) {
                 console.warn(`[EXTRACT] Failed to insert edge:`, edgeErr);
               } else if (reviewStatus === 'pending') {
-                console.log(`[EXTRACT] вљ пёЏ Relationship ${rel.source_name} в†’ ${rel.target_name} requires review (confidence: ${rel.confidence})`);
               }
             }
           }
@@ -9320,7 +9266,6 @@ export default function Dashboard() {
             }
           }
 
-          console.log(`[EXTRACT] вњ… Stored ${extraction.entities.length} entities, ${extraction.relationships.length} relationships, ${extraction.kpis.length} KPIs`);
         } catch (err) {
           console.error("[EXTRACT] Entity extraction failed:", err);
           // Non-fatal вЂ” document is saved, embeddings work
@@ -9348,10 +9293,6 @@ export default function Dashboard() {
           const title = docTitle || "Untitled document";
           const chunkBuild = await buildParentChildChunks(truncated, title);
           const pairs = chunkBuild.pairs;
-          console.log(
-            `[CHUNK] Doc ${documentId}: mode=${chunkBuild.mode}, parents=${chunkBuild.parentCount}, children=${pairs.length}` +
-            (chunkBuild.modelUsed ? `, model=${chunkBuild.modelUsed}` : "")
-          );
 
           // Build a short document summary for contextual headers (first 500 chars)
           const docSummary = rawContent.slice(0, 500);
@@ -9390,7 +9331,6 @@ export default function Dashboard() {
               } catch {
                 // Contextual enrichment failed or timed out вЂ” embed raw chunk (still works, just less precise)
                 // This is non-fatal and shouldn't block the upload
-                console.log(`[EMBED] Contextual enrichment skipped for chunk ${i + 1}/${pairs.length} (timeout or error)`);
                 contextualSkipped++;
               }
 
@@ -9457,10 +9397,6 @@ export default function Dashboard() {
           }
           const failedTotal = chunksEmbeddingFailed + chunksInsertFailed;
           const statusEmoji = chunksEmbedded > 0 ? "вњ…" : "вљ пёЏ";
-          console.log(
-            `[EMBED] ${statusEmoji} Indexed ${chunksEmbedded}/${chunksAttempted} chunks for doc ${documentId} ` +
-            `(mode=${chunkBuild.mode}, contextual_skipped=${contextualSkipped}, embed_failed=${chunksEmbeddingFailed}, insert_failed=${chunksInsertFailed}, total_failed=${failedTotal})`
-          );
           
           // в”Ђв”Ђ Trigger entity extraction after embeddings are done в”Ђв”Ђ
           const eventId = activeEventId || (await ensureActiveEventId());
@@ -9650,10 +9586,7 @@ export default function Dashboard() {
               role: (m.role === "assistant" ? "assistant" : "user") as "assistant" | "user",
               content: m.content || "",
             }));
-            console.log("[DEBUG] вњ… Fetched chat history from DB:", threadMessages.length, "messages");
-            console.log("[DEBUG] Sample messages:", threadMessages.slice(0, 3).map(m => ({ role: m.role, content: m.content.substring(0, 50) + "..." })));
           } else {
-            console.log("[DEBUG] вљ пёЏ No messages found in DB for thread:", threadId);
           }
         }
       } catch (fetchError) {
@@ -9666,7 +9599,6 @@ export default function Dashboard() {
             role: (m.author === "assistant" ? "assistant" : "user") as "assistant" | "user",
             content: m.text,
           }));
-        console.log("[DEBUG] Using state messages as fallback:", threadMessages.length, "messages");
       }
 
     // If still no messages, try state as last resort
@@ -9678,7 +9610,6 @@ export default function Dashboard() {
           role: (m.author === "assistant" ? "assistant" : "user") as "assistant" | "user",
           content: m.text,
         }));
-      console.log("[DEBUG] Using state messages (no DB messages):", threadMessages.length, "messages");
     }
     
     return threadMessages;
@@ -9952,7 +9883,6 @@ export default function Dashboard() {
               if (!streamCompleted) streamer.appendChunk(chunk);
             },
             (status) => {
-              console.log("[AGENT] Status:", status);
             },
             (err) => {
               if (!streamCompleted) {
@@ -10043,13 +9973,6 @@ export default function Dashboard() {
               (doc.folder_id && selectedFolderIds.includes(doc.folder_id))
           );
           
-          console.log("[DEBUG] Folder scope filter:", {
-            totalDocs: docList.length,
-            selectedFolders: selectedFolderIds,
-            linkedDocs: allowed.size,
-            afterFilter: filtered.length,
-            droppedDocs: docList.length - filtered.length,
-          });
           
           // IMPORTANT: If folder filter removes ALL documents, return the original list
           // This prevents the case where a document IS in the folder but the link table
@@ -10073,11 +9996,7 @@ export default function Dashboard() {
       // Get thread messages (from state or DB)
       const threadMessages = await getThreadMessages(threadId, 10); // Get more messages for better context
       
-      console.log("[DEBUG] ========== QUERY REWRITING ==========");
-      console.log("[DEBUG] Original question:", question);
-      console.log("[DEBUG] Thread messages count:", threadMessages.length);
       if (threadMessages.length > 0) {
-        console.log("[DEBUG] Last few messages:", threadMessages.slice(-3).map(m => ({ role: m.role, content: m.content.substring(0, 100) })));
       }
       
       // Use backend LLM rewriting if we have chat history and the question might need rewriting
@@ -10159,13 +10078,11 @@ export default function Dashboard() {
       };
       
       const namesInHistory = extractNamesFromHistory(threadMessages);
-      console.log("[DEBUG] Names found in chat history:", namesInHistory);
       
       if ((hasPronouns || hasVaguePattern || isShort) && threadMessages.length > 0) {
         try {
           // Call backend LLM to rewrite the query (much more robust than frontend heuristics)
           searchQuestion = await rewriteQueryWithLLM(question, threadMessages);
-          console.log("[DEBUG] LLM rewritten query:", searchQuestion);
           
           // VALIDATION: Only fall back to name injection if LLM rewrite failed AND
           // we have VERIFIED company names (not AI response headers)
@@ -10177,15 +10094,12 @@ export default function Dashboard() {
               const knownCompanyLower = new Set((companyCards || []).map(c => (c.company_name || "").toLowerCase()));
               const verifiedName = namesInHistory.reverse().find(n => knownCompanyLower.has(n.toLowerCase()));
               if (verifiedName) {
-                console.log("[DEBUG] вљ пёЏ LLM rewrite missing company name, injecting verified:", verifiedName);
                 searchQuestion = question;
                 for (const pronoun of ["him", "her", "it", "they", "them", "his", "her", "their", "this", "that"]) {
                   const regex = new RegExp(`\\b${pronoun}\\b`, "gi");
                   searchQuestion = searchQuestion.replace(regex, verifiedName);
                 }
-                console.log("[DEBUG] Fallback rewritten query:", searchQuestion);
               } else {
-                console.log("[DEBUG] LLM rewrite didn't include names, but no verified company found вЂ” trusting LLM");
               }
             }
           }
@@ -10202,12 +10116,10 @@ export default function Dashboard() {
           })();
           
           if (companyNameFromLastQ) {
-            console.log("[DEBUG] рџЋЇ Company from last user question:", companyNameFromLastQ);
             // Ensure the rewritten query includes this company name
             const searchLower = searchQuestion.toLowerCase();
             if (!searchLower.includes(companyNameFromLastQ.toLowerCase())) {
               searchQuestion = `${companyNameFromLastQ} ${searchQuestion}`.replace(/\s+/g, " ").trim();
-              console.log("[DEBUG] вњ… Injected company name into search query:", searchQuestion);
             }
           }
         } catch (rewriteError) {
@@ -10215,13 +10127,11 @@ export default function Dashboard() {
           // FALLBACK: If we have pronouns and names in history, replace pronouns with the most recent name
           if (hasPronouns && namesInHistory.length > 0) {
             const mostRecentName = namesInHistory[namesInHistory.length - 1];
-            console.log("[DEBUG] Using fallback: replacing pronouns with", mostRecentName);
             searchQuestion = question;
             for (const pronoun of ["him", "her", "it", "they", "them", "his", "her", "their", "this", "that"]) {
               const regex = new RegExp(`\\b${pronoun}\\b`, "gi");
               searchQuestion = searchQuestion.replace(regex, mostRecentName);
             }
-            console.log("[DEBUG] Fallback rewritten query:", searchQuestion);
           } else {
             searchQuestion = question;
           }
@@ -10229,7 +10139,6 @@ export default function Dashboard() {
       } else if ((hasPronouns || hasVaguePattern || followUpCueInQuestion) && namesInHistory.length > 0) {
         // Even if no LLM rewriting triggered, still resolve pronouns if we have names
         const mostRecentName = namesInHistory[namesInHistory.length - 1];
-        console.log("[DEBUG] Resolving follow-up without LLM using:", mostRecentName);
         for (const pronoun of ["him", "her", "it", "they", "them", "his", "her", "their", "this", "that"]) {
           const regex = new RegExp(`\\b${pronoun}\\b`, "gi");
           searchQuestion = searchQuestion.replace(regex, mostRecentName);
@@ -10238,11 +10147,8 @@ export default function Dashboard() {
         if (!hasPronouns && !searchQuestion.toLowerCase().includes(mostRecentName.toLowerCase())) {
           searchQuestion = `${searchQuestion} about ${mostRecentName}`.replace(/\s+/g, " ").trim();
         }
-        console.log("[DEBUG] Pronoun-resolved query:", searchQuestion);
       }
       
-      console.log("[DEBUG] Final search question:", searchQuestion);
-      console.log("[DEBUG] ======================================");
       
       // PHASE 1: Extract proper nouns (names) BEFORE cleaning to preserve them
       const extractProperNouns = (text: string): string[] => {
@@ -10286,7 +10192,6 @@ export default function Dashboard() {
           /\b(who is|about|tell me about|search for)\s+\w{4,}/i.test(query) ||
           hasNameLikeWords;
         
-        console.log("[DEBUG] Name detection:", { nouns, nameMatches, potentialMatches, allNames, hasNameLikeWords, isNameQuery });
         return [isNameQuery, allNames];
       };
       
@@ -10398,12 +10303,6 @@ export default function Dashboard() {
       let queryAnalysis: QueryAnalysis | null = null;
       try {
         queryAnalysis = await analyzeQuery(question, threadMessages);
-        console.log("[ROUTER] Query analysis:", {
-          intent: queryAnalysis.intent,
-          complexity: queryAnalysis.complexity,
-          strategy: queryAnalysis.retrieval_strategy,
-          entities: queryAnalysis.entities.length,
-        });
         // Use rewritten query from router if available, BUT ensure it includes company name from conversation
         if (queryAnalysis.rewritten_query && queryAnalysis.rewritten_query !== question) {
           // Extract company name from last user question
@@ -10419,7 +10318,6 @@ export default function Dashboard() {
             if (!rewrittenLower.includes(companyNameFromLastQ.toLowerCase())) {
               // Inject company name into router's rewritten query
               finalSearchQuery = `${companyNameFromLastQ} ${queryAnalysis.rewritten_query}`.replace(/\s+/g, " ").trim();
-              console.log("[DEBUG] вњ… Injected company name into router query:", finalSearchQuery);
             } else {
               finalSearchQuery = queryAnalysis.rewritten_query;
             }
@@ -10453,7 +10351,6 @@ export default function Dashboard() {
       })();
 
       if (isPortfolioIndexQuestion && companyCards.length > 0) {
-        console.log("[FAST-PATH] Portfolio index question detected вЂ” answering from company cards only");
         if (searchTimeoutId !== null) {
           window.clearTimeout(searchTimeoutId);
         }
@@ -10521,10 +10418,8 @@ export default function Dashboard() {
             question: finalSearchQuery,
             previousMessages: threadMsgsForRouter,
           });
-          console.log("[MULTI-AGENT] Orchestrator plan:", routingPlan);
 
           if (routingPlan.use_web && !webSearchEnabled) {
-            console.log("[MULTI-AGENT] Orchestrator recommends web search вЂ” enabling");
           }
         } catch (routerErr) {
           console.warn("[MULTI-AGENT] Orchestrator failed, falling back to vector-only:", routerErr);
@@ -10534,28 +10429,23 @@ export default function Dashboard() {
         const connectionKeywords = /\b(connect|connections?|relationship|partner|who\s+invest|portfolio|expand|expansion|introduce|introductions?|linked|network|graph)\b/i;
         if (connectionKeywords.test(question) && !routingPlan.use_graph) {
           routingPlan.use_graph = true;
-          console.log("[MULTI-AGENT] Client override: forced graph ON (connection keywords detected)");
         }
         // Force KPIs ON for metric questions
         const metricKeywords = /\b(arr|revenue|valuation|burn|runway|growth|metric|kpi|financials?|numbers?)\b/i;
         if (metricKeywords.test(question) && !routingPlan.use_kpis) {
           routingPlan.use_kpis = true;
-          console.log("[MULTI-AGENT] Client override: forced KPIs ON (metric keywords detected)");
         }
         // Force graph + KPIs ON for multi-company comparison / differs / business model questions
         const comparisonKeywords = /\b(compare|comparison|differs?|difference|versus|vs\.?|business\s*model|between\s+\w+\s+and)\b/i;
         if (comparisonKeywords.test(question)) {
           if (!routingPlan.use_graph) {
             routingPlan.use_graph = true;
-            console.log("[MULTI-AGENT] Client override: forced graph ON (comparison/differs detected)");
           }
           if (!routingPlan.use_kpis) {
             routingPlan.use_kpis = true;
-            console.log("[MULTI-AGENT] Client override: forced KPIs ON (comparison/differs detected)");
           }
         }
       } else {
-        console.log("[RAG] Standard single-path RAG (multi-agent OFF)");
       }
 
       // в”Ђв”Ђ Step 2: Parallel Graph/KPI Retrieval (multi-agent only) в”Ђв”Ђ
@@ -10564,7 +10454,6 @@ export default function Dashboard() {
           const entityNames = queryAnalysis?.entities?.map((e: any) => e.name) || [];
           const searchWords = finalSearchQuery.split(/\s+/).filter((w: string) => w.length > 3);
           const result = await retrieveGraphContext(eventId, searchWords, entityNames);
-          console.log("[MULTI-AGENT] Graph agent:", { entities: result.entities.length, edges: result.edges.length, connections: result.connections.length });
           return result.summary;
         } catch { return ""; }
       })() : Promise.resolve("");
@@ -10578,7 +10467,6 @@ export default function Dashboard() {
             ?.filter((e: any) => e.type === "metric")
             ?.map((e: any) => e.name) || [];
           const result = await retrieveKpiContext(eventId, companyNames.length > 0 ? companyNames : undefined, metricNames.length > 0 ? metricNames : undefined);
-          console.log("[MULTI-AGENT] KPI agent:", { kpis: result.kpis.length });
           return result.summary;
         } catch { return ""; }
       })() : Promise.resolve("");
@@ -10607,10 +10495,8 @@ export default function Dashboard() {
             ]);
             if (mqResult.queries.length > 1) {
               queryVariants = mqResult.queries;
-              console.log("[MULTI-QUERY] Variants:", queryVariants);
             }
           } catch {
-            console.log("[MULTI-QUERY] Generation skipped вЂ” using original query only");
           }
 
           // Step 2: Embed all variants in parallel
@@ -10659,12 +10545,6 @@ export default function Dashboard() {
           if (mergedMatches.length === 0) return [];
 
           const totalRaw = allResults.reduce((acc, r) => acc + r.length, 0);
-          console.log("[PARALLEL] Multi-query semantic search:", {
-            variants: queryVariants.length,
-            totalRawHits: totalRaw,
-            mergedUnique: mergedMatches.length,
-            top: mergedMatches.slice(0, 3).map((m: any) => m.similarity),
-          });
 
           // GraphRAG expansion (optional, with tight timeout)
           const useGraphRAG = queryAnalysis?.retrieval_strategy?.includes("graph") ?? false;
@@ -10686,7 +10566,6 @@ export default function Dashboard() {
                 new Promise<never>((_, reject) => setTimeout(() => reject(new Error("GraphRAG timeout")), 4000)),
               ]);
               finalChunks = graphragResult.relevant_chunks;
-              console.log("[PARALLEL] GraphRAG:", { initial: mergedMatches.length, relevant: finalChunks.length });
             } catch {
               console.warn("[PARALLEL] GraphRAG skipped (timeout or error)");
             }
@@ -10725,7 +10604,6 @@ export default function Dashboard() {
             filter_event_id: eventId,
           });
           if (keywordError || !keywordRows?.length) return [];
-          console.log("[PARALLEL] Keyword search:", { count: keywordRows.length });
           return keywordRows as typeof keywordMatches;
         } catch {
           return [];
@@ -10754,7 +10632,6 @@ export default function Dashboard() {
             const fullText = `${doc.title || ""} ${doc.file_name || ""} ${(doc.raw_content || "").substring(0, 5000)}`.toLowerCase();
             return Array.from(searchTerms).some(term => fullText.includes(term));
           });
-          console.log("[PARALLEL] Direct title search:", { found: directMatches.length });
           return directMatches.map((doc: any) => ({
             document_id: doc.id, rank: 0.5, snippet: (doc.raw_content || "").substring(0, 200)
           }));
@@ -10787,12 +10664,6 @@ export default function Dashboard() {
         if (!snippetByDocId.has(m.document_id) && m.snippet?.trim()) snippetByDocId.set(m.document_id, m.snippet!);
       });
 
-      console.log("[PARALLEL] All retrieval done:", {
-        semantic: semanticMatches.length,
-        keyword: keywordMatches.length,
-        direct: directResults.length,
-        budgetUsedMs: RETRIEVAL_BUDGET_MS - (retrievalDeadline - Date.now()),
-      });
 
       if (!docs.length && !error) {
         // в”Ђв”Ђ RRF merge в”Ђв”Ђ
@@ -10810,15 +10681,9 @@ export default function Dashboard() {
           .map(([id]) => id)
           .slice(0, 15);
         
-        console.log("[DEBUG] RRF results:", { 
-          semanticMatchCount: semanticMatches.length, 
-          keywordMatchCount: keywordMatches.length, 
-          rankedIdsCount: rankedIds.length 
-        });
 
         // CRITICAL FALLBACK: If all searches fail but it's a name query, try direct document query
         if (rankedIds.length === 0 && hasName) {
-          console.log("[DEBUG] рџ† All searches failed for name query - trying DIRECT document query");
           try {
             // Query ALL documents for this event and filter manually
             let fallbackQuery = supabase
@@ -10836,7 +10701,6 @@ export default function Dashboard() {
             const { data: allDocs, error: fallbackError } = await fallbackQuery;
             
             if (!fallbackError && allDocs?.length) {
-              console.log("[DEBUG] Fallback: Got", allDocs.length, "documents to scan");
               
               // Filter documents that contain any name or query token
               const searchTermsLower = new Set<string>();
@@ -10855,14 +10719,12 @@ export default function Dashboard() {
                 return Array.from(searchTermsLower).some(term => fullText.includes(term));
               });
               
-              console.log("[DEBUG] Fallback: Matched", matchedDocs.length, "documents by text search");
               
               if (matchedDocs.length > 0) {
                 docs = matchedDocs.slice(0, 10);
               }
             }
           } catch (fallbackErr) {
-            console.log("[DEBUG] Fallback query error:", fallbackErr);
           }
         }
 
@@ -11205,12 +11067,6 @@ export default function Dashboard() {
           ? 1
           : Math.max(2, Math.ceil(contentTokens.length * 0.6));
       
-      console.log("[DEBUG] Content filtering:", { 
-        contentTokens, 
-        minTokenMatches, 
-        hasName,
-        docsBeforeFilter: docs?.length || 0
-      });
       
       const filteredDocs = (docs || []).filter((doc) => {
         if (!contentTokens.length && !hasName) return false; // No tokens = no match (unless name query)
@@ -11246,10 +11102,6 @@ export default function Dashboard() {
         return matches >= minTokenMatches || hasStrongMatch || hasNameMatch;
       });
       
-      console.log("[DEBUG] After content filtering:", { 
-        filteredDocsCount: filteredDocs.length,
-        filteredDocTitles: filteredDocs.map(d => d.title || d.file_name).slice(0, 5)
-      });
 
       let rankedDocs = filteredDocs;
       if (rankedDocs.length > 1) {
@@ -11310,7 +11162,6 @@ export default function Dashboard() {
               .filter(Boolean) as typeof rankedDocs;
             if (colbertReranked.length > 0) {
               rankedDocs = colbertReranked;
-              console.log(`[MULTI-AGENT] ColBERT reranked ${colbertReranked.length} docs (method: ${colbertResult.method})`);
             }
           }
         } catch (colbertErr) {
@@ -11415,7 +11266,6 @@ export default function Dashboard() {
         previousEvidence.docs.length > 0 &&
         previousEvidenceThreadId === threadId
       ) {
-        console.log("[DEBUG] вњ… Using previous evidence for pronoun follow-up (skip new search)");
         const maxDocs = isComprehensiveQuestion ? 5 : 3;
         const answerDocs = previousEvidence.docs.slice(0, maxDocs);
         setLastEvidence({ question: searchQuestion, docs: answerDocs, decisions: decisionMatches });
@@ -11499,16 +11349,6 @@ export default function Dashboard() {
       const lowSignalFollowUp =
         isFollowUpQuery && contentTokens.length <= 1;
 
-      console.log("[DEBUG] Follow-up detection:", {
-        isFollowUpQuery,
-        wantsAlternative,
-        isConnectionIntent,
-        hasRankedDocs: rankedDocs?.length > 0,
-        hasPreviousEvidence: !!previousEvidence,
-        previousEvidenceDocsCount: previousEvidence?.docs?.length,
-        sameThread: previousEvidenceThreadId === threadId,
-        lowSignalFollowUp,
-      });
 
       if (!rankedDocs || rankedDocs.length === 0 || lowSignalFollowUp) {
         // CRITICAL: If search fails but we have context (pronouns OR follow-up cues), use previous evidence
@@ -11523,17 +11363,8 @@ export default function Dashboard() {
           // Removed: && previousEvidenceThreadId === threadId (too strict!)
         );
         
-        console.log("[DEBUG] Should use previous evidence:", {
-          isFollowUpQuery,
-          hasPronounInQuestion,
-          hasFollowupCueInOriginal,
-          hasPreviousEvidence: !!previousEvidence,
-          previousEvidenceDocsCount: previousEvidence?.docs?.length,
-          shouldUsePreviousEvidence,
-        });
         
         if (shouldUsePreviousEvidence) {
-          console.log("[DEBUG] вњ… Using previous evidence for follow-up query");
           const answerDocs = previousEvidence.docs.slice(0, 3);
           setLastEvidence({ question, docs: answerDocs, decisions: decisionMatches });
           setLastEvidenceThreadId(threadId);
@@ -11620,7 +11451,6 @@ export default function Dashboard() {
         const threadMessagesForFallback = await getThreadMessages(threadId, 10);
         
         if (hasPronounInOriginal && threadMessagesForFallback.length > 0) {
-          console.log("[DEBUG] вњ… Fallback: Calling Claude with chat history only (no new sources)");
           if (searchTimeoutId !== null) {
             window.clearTimeout(searchTimeoutId);
           }
@@ -11691,8 +11521,6 @@ export default function Dashboard() {
         // NO DOCUMENTS FOUND вЂ” but instead of showing an error, forward to Claude
         // so it can still answer general questions, greetings, or use conversation context.
         // This fixes the problem where "hello" or document-specific questions get blocked.
-        console.log("[DEBUG] No docs found, forwarding to Claude for general answer");
-        console.log("[DEBUG] isConnectionIntent:", isConnectionIntent, "| documents count:", documents.length);
         
         if (searchTimeoutId !== null) {
           window.clearTimeout(searchTimeoutId);
@@ -11704,7 +11532,6 @@ export default function Dashboard() {
         // the search didn't match the specific company name.
         let portfolioSources: Array<{ title: string | null; file_name: string | null; snippet: string | null }> = [];
         if (isConnectionIntent && documents.length > 0) {
-          console.log("[DEBUG] рџ”— Connection-intent detected вЂ” injecting full portfolio context");
           portfolioSources = documents.slice(0, 15).map((doc) => ({
             title: doc.title || "Untitled",
             file_name: null,
@@ -11742,7 +11569,6 @@ export default function Dashboard() {
             if (alreadyMentioned.length > 0) {
               const exclusionNote = `\n\n[IMPORTANT: The user is asking for a DIFFERENT option. Do NOT mention or recommend these companies/entities that were already discussed: ${alreadyMentioned.join(", ")}. Suggest only NEW companies that have NOT been mentioned yet.]`;
               questionForClaudeFallback = question + exclusionNote;
-              console.log("[DEBUG] рџљ« Fallback exclusion context added. Already mentioned:", alreadyMentioned);
             }
           }
           
@@ -11918,7 +11744,6 @@ export default function Dashboard() {
             }));
           if (extraPortfolio.length > 0) {
             sources = [...sources, ...extraPortfolio];
-            console.log("[DEBUG] рџ”— Connection-intent: injected", extraPortfolio.length, "extra portfolio docs");
           }
         }
         // Web search is now handled natively by Anthropic's web_search tool (no manual DuckDuckGo needed)
@@ -11940,7 +11765,6 @@ export default function Dashboard() {
                 file_name: null as string | null,
                 snippet: graphContext,
               });
-              console.log("[MULTI-AGENT] Injected graph context into sources");
             }
 
             if (kpiContext && kpiContext !== "No KPI data found.") {
@@ -11949,7 +11773,6 @@ export default function Dashboard() {
                 file_name: null as string | null,
                 snippet: kpiContext,
               });
-              console.log("[MULTI-AGENT] Injected KPI context into sources");
             }
             // Set context labels so user can see multi-agent sources (Knowledge Graph, KPIs) under the answer
             const labels: string[] = [];
@@ -11981,16 +11804,10 @@ export default function Dashboard() {
           if (alreadyMentioned.length > 0) {
             const exclusionNote = `\n\n[IMPORTANT: The user is asking for a DIFFERENT option. Do NOT mention or recommend these companies/entities that were already discussed: ${alreadyMentioned.join(", ")}. Suggest only NEW companies that have NOT been mentioned yet.]`;
             questionForClaude = question + exclusionNote;
-            console.log("[DEBUG] рџљ« Exclusion context added. Already mentioned:", alreadyMentioned);
           }
         }
         
         // Debug logging
-        console.log("[DEBUG] Sending to backend:", {
-          question: questionForClaude,
-          threadMessagesCount: threadMessages.length,
-          threadMessages: threadMessages.map(m => ({ role: m.role, content: m.content.substring(0, 50) + "..." }))
-        });
         
         await askClaudeAnswerStream(
           {
@@ -12053,7 +11870,6 @@ export default function Dashboard() {
             if (criticResult.issues.length > 0) {
               console.warn("[MULTI-AGENT] Critic found issues:", criticResult.issues);
             } else {
-              console.log("[MULTI-AGENT] Critic: answer is grounded (confidence:", criticResult.confidence, ")");
             }
           }).catch(() => { /* non-fatal */ });
         }
@@ -12068,7 +11884,6 @@ export default function Dashboard() {
             const MAX_SYSTEM2_ITERATIONS = 2;
 
             for (let iter = 0; iter < MAX_SYSTEM2_ITERATIONS; iter++) {
-              console.log(`[SYSTEM2] Reflection iteration ${iter + 1}...`);
               setChatLoadingStage?.(`System 2: Reflecting (iteration ${iter + 1})...`);
 
               const reflection = await system2Reflect({
@@ -12081,15 +11896,8 @@ export default function Dashboard() {
                 maxIterations: MAX_SYSTEM2_ITERATIONS,
               });
 
-              console.log("[SYSTEM2] Reflection result:", {
-                needs_more_data: reflection.needs_more_data,
-                confidence: reflection.confidence,
-                queries: reflection.follow_up_queries,
-                missing: reflection.missing_data_types,
-              });
 
               if (!reflection.needs_more_data || reflection.confidence >= 0.85) {
-                console.log(`[SYSTEM2] Satisfied at iteration ${iter + 1} (confidence: ${reflection.confidence})`);
                 break;
               }
 
@@ -12118,7 +11926,6 @@ export default function Dashboard() {
               }
 
               if (!additionalContext) {
-                console.log("[SYSTEM2] No additional context found, stopping.");
                 break;
               }
 
@@ -12163,7 +11970,6 @@ export default function Dashboard() {
                   if (refinedText.length > 50) {
                     fullAnswer = refinedText;
                     draftForReflection = refinedText;
-                    console.log(`[SYSTEM2] Refined answer (iteration ${iter + 1}): ${refinedText.length} chars`);
                   }
                 }
               } catch (refineErr) {
@@ -12171,7 +11977,6 @@ export default function Dashboard() {
               }
             }
             if (totalIterations > 0) {
-              console.log(`[SYSTEM2] Completed ${totalIterations} reflection iterations`);
             }
           } catch (s2err) {
             console.warn("[SYSTEM2] System 2 RAG failed (non-fatal):", s2err);

@@ -32,10 +32,8 @@ from pydantic import BaseModel, Field
 try:
     import orjson  # noqa: F401
     from fastapi.responses import ORJSONResponse
-    print("✅ orjson available — using ORJSONResponse")
 except ImportError:
     from fastapi.responses import JSONResponse as ORJSONResponse  # type: ignore[assignment]
-    print("⚠️  orjson not installed — using standard JSONResponse")
 
 # Anthropic SDK — async client for all Claude interactions
 try:
@@ -460,7 +458,6 @@ _RETIRED_MODELS = {
     "claude-3-opus-20240229",
 }
 if _raw_anthropic_model in _RETIRED_MODELS:
-    print(f"⚠️  ANTHROPIC_MODEL '{_raw_anthropic_model}' is RETIRED (404). Auto-replacing with 'claude-sonnet-4-20250514'")
     ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
 else:
     ANTHROPIC_MODEL = _raw_anthropic_model
@@ -606,9 +603,6 @@ elif ANTHROPIC_API_KEY:
 else:
     EMBEDDINGS_PROVIDER = "voyage"  # default, but will warn on first call
 
-print(f"📊 Embeddings provider: {EMBEDDINGS_PROVIDER} "
-      f"(voyage_key={'✅' if VOYAGE_API_KEY else '❌'}, "
-      f"openai_key={'✅' if OPENAI_API_KEY else '❌'})")
 
 # Reranking settings (cross-encoder) — Voyage rerank-2.5 is primary; Cohere kept as fallback
 COHERE_API_KEY = os.getenv("COHERE_API_KEY")
@@ -743,7 +737,6 @@ app.add_middleware(
     expose_headers=["*"],
     max_age=86400,
 )
-print("🌐 CORS: allow general-platform.vercel.app + localhost")
 
 # Data models
 class StartupData(BaseModel):
@@ -1635,7 +1628,7 @@ def is_meta_question(question: str) -> bool:
         "how can you help",
         "what features",
         "what functionality",
-        "what is orbit ai",
+        "what is company ai",
         "who are you",
         "introduce yourself",
         "what is this",
@@ -2167,16 +2160,16 @@ def build_answer_prompt(
     is_raw_text = is_raw_text_request(question)
     
     if is_meta:
-        # Meta questions: answer with general knowledge about Orbit AI capabilities
+        # Meta questions: answer with general knowledge about Company AI capabilities
         connections_section = ""
         if connection_lines:
             connections_section = f"\n\nYou also have access to a Company Connections Graph with {len(connection_lines)} recorded connections:\n{connections_block}\n\nYou can tell users about these connections when relevant."
-        return f"""You are Orbit AI, a VC intelligence system built for investment teams. Answer this question about your capabilities and features.
+        return f"""You are Company AI, a VC intelligence system built for investment teams. Answer this question about your capabilities and features.
 
 Question:
 {question}
 
-Answer based on what Orbit AI can do:
+Answer based on what Company AI can do:
 - Answer questions about uploaded documents (pitch decks, memos, meeting notes)
 - Extract structured information from unstructured documents
 - Track investment decisions and outcomes
@@ -2226,7 +2219,7 @@ Be helpful and specific. Explain what you can do and how you help investment tea
         # Build the prompt with conversation history at the top
         history_section = conversation_context if conversation_context else "\n\n=== PREVIOUS CONVERSATION HISTORY ===\n(No previous conversation history available)\n=== END OF CONVERSATION HISTORY ===\n"
         
-        return f"""You are Orbit AI, a VC intelligence system. You answer questions based on the provided sources and conversation history.
+        return f"""You are Company AI, a VC intelligence system. You answer questions based on the provided sources and conversation history.
 
 {history_section}
 {company_highlight}
@@ -2459,7 +2452,7 @@ async def call_anthropic_answer(
         tools.append(ANTHROPIC_WEB_SEARCH_TOOL)
 
     system_msg = (
-        "You are Orbit AI, a VC intelligence system. You answer questions based on "
+        "You are Company AI, a VC intelligence system. You answer questions based on "
         "provided sources and the Company Connections Graph. Cite sources with [1], [2], etc. "
         "When a user asks about a company, check the Connections Graph for relationships. "
         "If the user asks WHAT a company IS or what it does, focus on answering that question — "
@@ -2720,7 +2713,7 @@ def normalize_investor_data(data: Dict[str, Any]) -> InvestorData:
     geo_focus = parse_list(
         data.get('geoFocus') or
         data.get('geo_focus') or 
-        data.get('Main Geographies Targeted (labels)') or  # Orbit CSV format
+        data.get('Main Geographies Targeted (labels)') or  # Platform CSV format
         data.get('Location') or
         data.get('geoMarkets') or 
         data.get('region') or 
@@ -2734,8 +2727,8 @@ def normalize_investor_data(data: Dict[str, Any]) -> InvestorData:
     industry_prefs = parse_list(
         data.get('industryPreferences') or 
         data.get('industry_preferences') or 
-        data.get('[BD] Vertical Interests / Vertical (labels)') or  # Orbit CSV format
-        data.get('[BD] Partner Industry (labels)') or  # Orbit CSV format (alternative)
+        data.get('[BD] Vertical Interests / Vertical (labels)') or  # Platform CSV format
+        data.get('[BD] Partner Industry (labels)') or  # Platform CSV format (alternative)
         data.get('Vertical Interests') or
         data.get('industries') or 
         []
@@ -2806,7 +2799,7 @@ def normalize_investor_data(data: Dict[str, Any]) -> InvestorData:
     firm_name = safe_str(
         data.get('firmName') or 
         data.get('firm_name') or 
-        data.get('Investor name') or  # Orbit CSV format
+        data.get('Investor name') or  # Platform CSV format
         data.get('Task Name') or  # ClickUp export format
         data.get('name') or 
         data.get('firm') or 
@@ -2821,8 +2814,8 @@ def normalize_investor_data(data: Dict[str, Any]) -> InvestorData:
     member_name_raw = safe_str(
         data.get('memberName') or 
         data.get('member_name') or 
-        data.get('🦅 [INV] Team Member (users)') or  # Orbit CSV format (with emoji)
-        data.get('[INV] Team Member (users)') or  # Orbit CSV format (without emoji)
+        data.get('🦅 [INV] Team Member (users)') or  # Platform CSV format (with emoji)
+        data.get('[INV] Team Member (users)') or  # Platform CSV format (without emoji)
         data.get('Team Member') or
         data.get('investment_member') or 
         data.get('investorMemberName') or 
@@ -3480,10 +3473,10 @@ def try_direct_csv_parse(text_data: str, data_type: Optional[str]) -> Optional[C
             ):
                 header_idx = idx
                 break
-            # ClickUp/Orbit format: "task name" + investor signals
+            # ClickUp/Platform format: "task name" + investor signals
             if (
                 "task name" in normalized and 
-                any("team member" in h or "cheque size" in h or "orbit relationship" in h for h in normalized)
+                any("team member" in h or "cheque size" in h or "platform relationship" in h for h in normalized)
             ):
                 header_idx = idx
                 break
@@ -3527,20 +3520,20 @@ def try_direct_csv_parse(text_data: str, data_type: Optional[str]) -> Optional[C
         has_mentor_headers = any(h in headers_lower for h in ['full name', 'fullname']) and any(h in headers_lower for h in ['email'])
         has_corporate_headers = any(h in headers_lower for h in ['contact name', 'contactname']) and any(h in headers_lower for h in ['firm name', 'firmname', 'company name', 'companyname'])
         
-        # Investor detection: standard headers OR ClickUp/Orbit format
+        # Investor detection: standard headers OR ClickUp/Platform format
         has_investor_headers_standard = (
             any(h in headers_lower for h in ['investor name', 'firm name', 'firmname']) and 
             any(h in headers_lower for h in ['member name', 'membername', 'team member'])
         )
-        # ClickUp/Orbit CSV: "Task Name" column + investor signals (cheque size, team member, orbit relationship type with INV)
+        # ClickUp/Platform CSV: "Task Name" column + investor signals (cheque size, team member, platform relationship type with INV)
         has_investor_headers_clickup = (
             any(h in headers_lower for h in ['task name']) and 
             (any_header_contains('cheque size') or any_header_contains('team member') or any_header_contains('syndicates'))
         )
-        # Also detect if headers contain "orbit relationship" — strong signal for Orbit ClickUp export
-        has_orbit_relationship = any_header_contains('orbit relationship') or any_header_contains('relationship type')
+        # Also detect if headers contain "platform relationship" — strong signal for Platform ClickUp export
+        has_platform_relationship = any_header_contains('platform relationship') or any_header_contains('relationship type')
         has_investor_headers = has_investor_headers_standard or has_investor_headers_clickup or (
-            any(h in headers_lower for h in ['task name']) and has_orbit_relationship
+            any(h in headers_lower for h in ['task name']) and has_platform_relationship
         )
         
         has_startup_headers = any(h in headers_lower for h in ['company name', 'companyname']) and any(h in headers_lower for h in ['funding', 'stage'])
@@ -4214,7 +4207,7 @@ async def stream_anthropic_answer(prompt: str, question: str = "", sources: List
         tools.append(ANTHROPIC_WEB_SEARCH_TOOL)
 
     system_msg = (
-        "You are Orbit AI, a VC intelligence system. You answer questions based on "
+        "You are Company AI, a VC intelligence system. You answer questions based on "
         "provided sources and the Company Connections Graph. Cite sources with [1], [2], etc. "
         "When a user asks about a company, check the Connections Graph for relationships. "
         "If the user asks WHAT a company IS or what it does, focus on answering that question — "
@@ -4738,7 +4731,7 @@ async def system2_refine_stream(request: System2RefineRequest):
     Takes the draft answer + additional context from follow-up searches
     and produces an improved, refined final answer via streaming SSE.
     """
-    prompt = f"""You are Orbit AI, a VC intelligence synthesis agent performing iterative refinement.
+    prompt = f"""You are Company AI, a VC intelligence synthesis agent performing iterative refinement.
 
 You previously produced a draft answer, but upon reflection, you identified gaps.
 Additional data has been retrieved. Your job: produce an IMPROVED, REFINED answer
@@ -5062,7 +5055,7 @@ def build_multiagent_answer_prompt(
             + "\n=== END HISTORY ===\n"
         )
 
-    return f"""You are Orbit AI, a VC intelligence synthesis agent. You received pre-retrieved context from multiple retrieval agents. Your job is to produce a single, coherent, well-cited answer.
+    return f"""You are Company AI, a VC intelligence synthesis agent. You received pre-retrieved context from multiple retrieval agents. Your job is to produce a single, coherent, well-cited answer.
 
 CITATION RULES:
 - Cite document sources with [1], [2], etc.
@@ -7126,7 +7119,7 @@ async def suggest_connections(request: SuggestConnectionsRequest, auth: AuthCont
     if request.question:
         question_context = f"\nThe user asked: \"{request.question}\""
 
-    prompt = f"""You are Orbit AI, a VC intelligence system. Analyze the following document sources and existing company connections graph.
+    prompt = f"""You are Company AI, a VC intelligence system. Analyze the following document sources and existing company connections graph.
 Suggest up to {request.max_suggestions} NEW company connections that are NOT already in the graph.
 
 {question_context}
@@ -8033,7 +8026,7 @@ async def startup_event():
 
 
 # ══════════════════════════════════════════════════════════════
-#  ORBIT PLATFORM — Company-Agnostic Extensions
+#  COMPANY PLATFORM — Company-Agnostic Extensions
 #  These endpoints let any company paste a description and get
 #  a custom AI persona. Team members share the same context.
 # ══════════════════════════════════════════════════════════════
@@ -8478,7 +8471,7 @@ async def _execute_agent_tool(tool_name: str, tool_input: dict, event_id: str) -
         return f"Tool error ({tool_name}): {str(e)[:300]}"
 
 
-AGENT_SYSTEM_PROMPT = """You are Orbit AI, a VC portfolio intelligence assistant for a venture capital firm.
+AGENT_SYSTEM_PROMPT = """You are Company AI, a VC portfolio intelligence assistant for a venture capital firm.
 
 You have access to tools that let you search the firm's portfolio database, documents, and knowledge graph.
 ALWAYS use your tools to find information before answering. Never guess or say "I don't have access" without searching first.

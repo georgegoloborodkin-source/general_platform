@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { clearMyToken404Cache } from "@/utils/ingestionClient";
 
 const PRODUCTION_ORIGIN = "https://general-platform.vercel.app";
 const BACKEND_ORIGIN = "https://general-platform.onrender.com";
@@ -15,6 +16,7 @@ export function getGoogleOAuthRedirectTo(): string {
  * Redirects to backend -> Google -> back to frontend. No reliance on Supabase provider_token.
  */
 export async function triggerGoogleOAuthForDrive(): Promise<void> {
+  clearMyToken404Cache(); // so after redirect we hit backend again for the new token
   const { data: sessionData } = await supabase.auth.getSession();
   const accessToken = sessionData?.session?.access_token;
   if (!accessToken) {

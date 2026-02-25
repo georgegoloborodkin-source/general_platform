@@ -16,7 +16,7 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 PROMPT_GENERATOR_SYSTEM = """You are a system prompt engineer. Given a company description, generate a comprehensive system prompt for an AI assistant that will serve that company's team.
 
 The system prompt you generate must:
-1. Define the AI's identity (e.g., "You are Orbit AI, a [company type] intelligence system built for [team type]")
+1. Define the AI's identity (e.g., "You are Company AI, a [company type] intelligence system built for [team type]")
 2. List 6-8 specific capabilities tailored to that company's work
 3. Define what types of documents the team uploads (e.g., "strategy docs, risk reports" for trading; "campaign briefs, analytics" for marketing)
 4. Define relationship/connection types relevant to the company (e.g., "Client, Vendor, Partner" etc.)
@@ -26,7 +26,7 @@ The system prompt you generate must:
 
 Output ONLY the system prompt text. No explanations, no markdown formatting, no code blocks. Just the raw prompt text that will be set as the AI's system message."""
 
-FALLBACK_PROMPT = """You are Orbit AI, an enterprise intelligence system built for your team.
+FALLBACK_PROMPT = """You are Company AI, an enterprise intelligence system built for your team.
 
 Your capabilities:
 - Answer questions about uploaded documents (reports, proposals, contracts, notes)
@@ -82,14 +82,13 @@ async def generate_system_prompt(company_description: str) -> str:
             if len(generated) > 100:
                 return generated
             return _build_simple_prompt(company_description)
-    except Exception as e:
-        print(f"[prompt_builder] Claude call failed: {e}, using fallback")
+    except Exception:
         return _build_simple_prompt(company_description)
 
 
 def _build_simple_prompt(company_description: str) -> str:
     """Build a basic prompt from the description without an API call."""
-    return f"""You are Orbit AI, an intelligent assistant built specifically for the following company:
+    return f"""You are Company AI, an intelligent assistant built specifically for the following company:
 
 {company_description}
 

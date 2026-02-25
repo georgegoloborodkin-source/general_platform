@@ -1145,7 +1145,6 @@ async function parseSSEExtractionStream<T>(response: Response, label: string): P
             continue;
           }
           if (parsed.status === "done" && parsed.result) {
-            console.log(`[${label}] ✅ Extraction complete via stream`);
             return parsed.result as T;
           }
           if (parsed.status === "error") {
@@ -1177,7 +1176,6 @@ export async function extractEntities(input: {
 
     // ── Try streaming endpoint first (avoids Render.com 30s timeout) ──
     if (hasPdf) {
-      console.log(`[extractEntities] Using streaming PDF path (${Math.round((input.pdf_base64?.length || 0) / 1024)}KB base64)`);
       try {
         const streamResp = await fetchWithTimeout(
           `${baseUrl}/extract-entities/stream`,
@@ -1204,7 +1202,6 @@ export async function extractEntities(input: {
 
     // ── Fallback: regular (non-streaming) endpoint, text-only ──
     const textOnlyInput = { ...input, pdf_base64: undefined };
-    console.log(`[extractEntities] Using regular text-only path (${(input.document_text?.length || 0)} chars)`);
     const response = await fetchWithTimeout(
       `${baseUrl}/extract-entities`,
       {
@@ -1339,7 +1336,6 @@ export async function extractCompanyProperties(input: {
 
     // ── Try streaming endpoint first when PDF (avoids Render 30s timeout) ──
     if (hasPdf) {
-      console.log(`[extractCompanyProperties] Using streaming PDF path (${Math.round((input.pdfBase64?.length || 0) / 1024)}KB base64)`);
       try {
         const streamResp = await fetchWithTimeout(
           `${baseUrl}/extract-company-properties/stream`,
@@ -1370,7 +1366,6 @@ export async function extractCompanyProperties(input: {
 
     // ── Fallback: regular endpoint, text-only (no PDF) ──
     const textPayload = { ...payload, pdf_base64: null };
-    console.log(`[extractCompanyProperties] Using regular text-only path (${(input.rawContent?.length || 0)} chars)`);
     const response = await fetchWithTimeout(
       `${baseUrl}/extract-company-properties`,
       {

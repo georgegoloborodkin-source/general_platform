@@ -28,7 +28,7 @@ services:
         sync: false
 
   - type: web
-    name: orbit-platform-web
+    name: company-platform-web
     runtime: static
     region: oregon
     plan: free

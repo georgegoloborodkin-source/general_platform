@@ -1,5 +1,5 @@
 /**
- * API client for the Orbit Platform backend.
+ * API client for the Company Platform backend.
  */
 
 const API_BASE =

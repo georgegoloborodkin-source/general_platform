@@ -1,4 +1,4 @@
--- Orbit Platform: Company-agnostic intelligence system
+-- Company Platform: Company-agnostic intelligence system
 -- Initial schema: orgs, profiles, company context, documents, chat
 -- Run this in Supabase SQL Editor (Dashboard → SQL Editor → New query)
 

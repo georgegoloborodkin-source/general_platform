@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { CorporatePartner, DecisionLog, DocumentRecord, Event, Investor, Match, Mentor, SourceRecord, Startup, Task, TaskStatus, TimeSlotConfig, UserProfile } from "@/types";
+import type { DecisionLog, DocumentRecord, Event, SourceRecord, Task, TaskStatus, UserProfile } from "@/types";
 
 type SupabaseResult<T> = { data: T | null; error: any };
 
@@ -139,30 +139,6 @@ export async function getEvent(eventId: string) {
   return supabase.from("events").select("*").eq("id", eventId).single();
 }
 
-export async function getInvestorsByEvent(eventId: string) {
-  return supabase.from("investors").select("*").eq("event_id", eventId);
-}
-
-export async function getStartupsByEvent(eventId: string) {
-  return supabase.from("startups").select("*").eq("event_id", eventId);
-}
-
-export async function getTimeSlotsByEvent(eventId: string) {
-  return supabase.from("time_slots").select("*").eq("event_id", eventId).order("start_time", { ascending: true });
-}
-
-export async function getMatchesByEvent(eventId: string) {
-  return supabase.from("matches").select("*").eq("event_id", eventId);
-}
-
-export async function getMentorsByEvent(eventId: string) {
-  return supabase.from("mentors").select("*").eq("event_id", eventId);
-}
-
-export async function getCorporatesByEvent(eventId: string) {
-  return supabase.from("corporates").select("*").eq("event_id", eventId);
-}
-
 export async function getDecisionsByEvent(eventId: string) {
   return supabase
     .from("decisions")
@@ -250,29 +226,18 @@ export async function getSourceFoldersByEvent(eventId: string) {
     .order("created_at", { ascending: false });
 }
 
-/**
- * Ensure default folders exist for an event (safety net if trigger didn't run)
- * Default folders: Portfolio Companies, Investors, Funds, Deals, Market Research, Due Diligence
- */
 export async function ensureDefaultFoldersForEvent(eventId: string): Promise<void> {
-  // Use the DB-side SECURITY DEFINER function which bypasses RLS.
-  // This creates all 8 default folders (including BD, Mentors/Corporates)
-  // with proper categories if they don't exist yet.
   const { error } = await supabase.rpc("ensure_default_folders_for_event", {
     p_event_id: eventId,
   });
   if (error) {
-    console.warn("[ensureDefaultFolders] RPC failed, falling back to direct insert:", error.message);
-    // Fallback: direct insert (works if user has proper RLS permissions)
     const defaultFolders: { name: string; category: string }[] = [
-      { name: 'Portfolio Companies', category: 'Portfolio Companies' },
-      { name: 'Investors', category: 'Funds' },
-      { name: 'Funds', category: 'Funds' },
+      { name: 'Companies', category: 'Companies' },
+      { name: 'Partners', category: 'Partners' },
       { name: 'Deals', category: 'Sourcing' },
       { name: 'Market Research', category: 'Sourcing' },
-      { name: 'Due Diligence', category: 'Portfolio Companies' },
+      { name: 'Due Diligence', category: 'Companies' },
       { name: 'BD', category: 'BD' },
-      { name: 'Mentors / Corporates', category: 'Mentors / Corporates' },
     ];
 
     const { data: existingFolders } = await supabase
@@ -555,7 +520,6 @@ export async function retrieveGraphContext(
     return { entities: [], edges: [], connections: [], summary: "No search terms provided." };
   }
 
-  console.log("[GraphRetrieval] Searching with terms:", allTerms);
 
   try {
     // ── Step 1: Find entities by name ──
@@ -581,7 +545,6 @@ export async function retrieveGraphContext(
           properties: e.properties || {},
         });
       }
-      console.log("[GraphRetrieval] Found", entities.length, "entities:", entities.map(e => e.name));
 
       // ── Step 2: Get kg_edges connecting these entities (use .in() separately) ──
       const entityIds = entities.map((e) => e.id);
@@ -641,7 +604,6 @@ export async function retrieveGraphContext(
             properties: edge.properties || {},
           });
         }
-        console.log("[GraphRetrieval] Found", edges.length, "edges");
       } catch (edgeErr) {
         console.error("[GraphRetrieval] Edge query error:", edgeErr);
       }
@@ -674,7 +636,6 @@ export async function retrieveGraphContext(
             reasoning: c.ai_reasoning || c.notes || "",
           });
         }
-        console.log("[GraphRetrieval] Found", connections.length, "company connections");
       }
     } catch (connErr) {
       console.error("[GraphRetrieval] Connection query error:", connErr);
@@ -1414,214 +1375,6 @@ export async function insertSource(
 
 export async function deleteSource(sourceId: string) {
   return supabase.from("sources").delete().eq("id", sourceId);
-}
-
-export async function upsertInvestors(eventId: string, investors: Investor[]) {
-  // Map frontend Investor to DB shape
-  const payload = investors.map((inv) => ({
-    id: inv.id,
-    event_id: eventId,
-    firm_name: inv.firmName,
-    member_name: inv.memberName,
-    geo_focus: inv.geoFocus,
-    industry_preferences: inv.industryPreferences,
-    stage_preferences: inv.stagePreferences,
-    min_ticket_size: inv.minTicketSize,
-    max_ticket_size: inv.maxTicketSize,
-    total_slots: inv.totalSlots,
-    table_number: inv.tableNumber || null,
-    availability_status: inv.availabilityStatus,
-    slot_availability: inv.slotAvailability || {},
-  }));
-  return supabase.from("investors").upsert(payload, { onConflict: "id" });
-}
-
-export async function upsertStartups(eventId: string, startups: Startup[]) {
-  const payload = startups.map((s) => ({
-    id: s.id,
-    event_id: eventId,
-    company_name: s.companyName,
-    geo_markets: s.geoMarkets,
-    industry: s.industry,
-    funding_target: s.fundingTarget,
-    funding_stage: s.fundingStage,
-    availability_status: s.availabilityStatus,
-    slot_availability: s.slotAvailability || {},
-  }));
-  return supabase.from("startups").upsert(payload, { onConflict: "id" });
-}
-
-export async function upsertTimeSlots(eventId: string, timeSlots: any[]) {
-  const payload = timeSlots.map((t) => ({
-    id: t.id,
-    event_id: eventId,
-    label: t.label,
-    start_time: t.startTime || t.start_time,
-    end_time: t.endTime || t.end_time,
-    is_done: t.isDone ?? t.is_done ?? false,
-    break_after: t.breakAfter ?? t.break_after ?? null,
-  }));
-  return supabase.from("time_slots").upsert(payload, { onConflict: "id" });
-}
-
-export async function upsertMatches(eventId: string, matches: Match[]) {
-  const payload = matches.map((m) => ({
-    id: m.id,
-    event_id: eventId,
-    startup_id: m.startupId,
-    investor_id: m.targetType === "investor" ? m.targetId : m.investorId || null,
-    target_id: m.targetId,
-    target_type: m.targetType,
-    startup_name: m.startupName,
-    target_name: m.targetName,
-    time_slot_id: m.timeSlot || null,
-    compatibility_score: m.compatibilityScore,
-    score_breakdown: m.scoreBreakdown || [],
-    status: m.status,
-    completed: m.completed,
-    locked: m.locked ?? false,
-    startup_attending: m.startupAttending ?? null,
-    target_attending: m.targetAttending ?? null,
-  }));
-  return supabase.from("matches").upsert(payload, { onConflict: "id" });
-}
-
-export async function saveInvestorAvailability(investorId: string, eventId: string, slotAvailability: Record<string, boolean>) {
-  return supabase
-    .from("investors")
-    .update({ slot_availability: slotAvailability })
-    .eq("id", investorId)
-    .eq("event_id", eventId);
-}
-
-export async function upsertMentors(eventId: string, mentors: Mentor[]) {
-  const payload = mentors.map((m) => ({
-    id: m.id,
-    event_id: eventId,
-    full_name: m.fullName,
-    email: m.email,
-    linkedin_url: m.linkedinUrl || null,
-    geo_focus: m.geoFocus,
-    industry_preferences: m.industryPreferences,
-    expertise_areas: m.expertiseAreas,
-    total_slots: m.totalSlots,
-    availability_status: m.availabilityStatus,
-    slot_availability: m.slotAvailability || {},
-  }));
-  return supabase.from("mentors").upsert(payload, { onConflict: "id" });
-}
-
-export async function upsertCorporates(eventId: string, corporates: CorporatePartner[]) {
-  const payload = corporates.map((c) => ({
-    id: c.id,
-    event_id: eventId,
-    firm_name: c.firmName,
-    contact_name: c.contactName,
-    email: c.email || null,
-    geo_focus: c.geoFocus,
-    industry_preferences: c.industryPreferences,
-    partnership_types: c.partnershipTypes,
-    stages: c.stages,
-    total_slots: c.totalSlots,
-    availability_status: c.availabilityStatus,
-    slot_availability: c.slotAvailability || {},
-  }));
-  return supabase.from("corporates").upsert(payload, { onConflict: "id" });
-}
-
-export function mapInvestorRow(row: any): Investor {
-  return {
-    id: row.id,
-    firmName: row.firm_name,
-    memberName: row.member_name,
-    geoFocus: row.geo_focus || [],
-    industryPreferences: row.industry_preferences || [],
-    stagePreferences: row.stage_preferences || [],
-    minTicketSize: row.min_ticket_size || 0,
-    maxTicketSize: row.max_ticket_size || 0,
-    totalSlots: row.total_slots || 0,
-    tableNumber: row.table_number || undefined,
-    availabilityStatus: row.availability_status || "present",
-    slotAvailability: row.slot_availability || {},
-  };
-}
-
-export function mapStartupRow(row: any): Startup {
-  return {
-    id: row.id,
-    companyName: row.company_name,
-    geoMarkets: row.geo_markets || [],
-    industry: row.industry || "",
-    fundingTarget: row.funding_target || 0,
-    fundingStage: row.funding_stage || "",
-    availabilityStatus: row.availability_status || "present",
-    slotAvailability: row.slot_availability || {},
-  };
-}
-
-export function mapMentorRow(row: any): Mentor {
-  return {
-    id: row.id,
-    fullName: row.full_name,
-    email: row.email,
-    linkedinUrl: row.linkedin_url || undefined,
-    geoFocus: row.geo_focus || [],
-    industryPreferences: row.industry_preferences || [],
-    expertiseAreas: row.expertise_areas || [],
-    totalSlots: row.total_slots || 0,
-    availabilityStatus: row.availability_status || "present",
-    slotAvailability: row.slot_availability || {},
-  };
-}
-
-export function mapCorporateRow(row: any): CorporatePartner {
-  return {
-    id: row.id,
-    firmName: row.firm_name,
-    contactName: row.contact_name,
-    email: row.email || undefined,
-    geoFocus: row.geo_focus || [],
-    industryPreferences: row.industry_preferences || [],
-    partnershipTypes: row.partnership_types || [],
-    stages: row.stages || [],
-    totalSlots: row.total_slots || 0,
-    availabilityStatus: row.availability_status || "present",
-    slotAvailability: row.slot_availability || {},
-  };
-}
-
-export function mapTimeSlotRow(row: any): TimeSlotConfig {
-  return {
-    id: row.id,
-    label: row.label,
-    startTime: row.start_time,
-    endTime: row.end_time,
-    isDone: row.is_done ?? false,
-    breakAfter: row.break_after ?? undefined,
-  };
-}
-
-export function mapMatchRow(row: any): Match {
-  const targetId = row.target_id || row.investor_id;
-  const targetType = row.target_type || "investor";
-  return {
-    id: row.id,
-    startupId: row.startup_id,
-    targetId,
-    targetType,
-    startupName: row.startup_name || "",
-    targetName: row.target_name || "",
-    timeSlot: row.time_slot_id || "",
-    slotTime: "",
-    compatibilityScore: row.compatibility_score || 0,
-    scoreBreakdown: row.score_breakdown || [],
-    status: row.status || "upcoming",
-    completed: row.completed ?? false,
-    locked: row.locked ?? false,
-    startupAttending: row.startup_attending ?? undefined,
-    targetAttending: row.target_attending ?? undefined,
-    investorId: row.investor_id || undefined,
-  };
 }
 
 // =============================================================================
