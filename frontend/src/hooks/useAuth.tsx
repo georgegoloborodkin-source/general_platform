@@ -1,8 +1,10 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { UserProfile } from "@/types";
 import { clearGoogleProviderTokens } from "@/utils/googleAuthStorage";
+
+const PROFILE_REFRESH_THROTTLE_MS = 8000;
 
 interface AuthContextType {
   user: User | null;
@@ -18,12 +20,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const lastProfileRefreshRef = useRef<number>(0);
 
   const refreshProfile = async () => {
     if (!user) {
       setProfile(null);
       return;
     }
+    const now = Date.now();
+    if (now - lastProfileRefreshRef.current < PROFILE_REFRESH_THROTTLE_MS) {
+      return;
+    }
+    lastProfileRefreshRef.current = now;
 
     try {
       // Use maybeSingle() to avoid 406 when no row exists (PostgREST returns 406 for .single() with 0 rows)
@@ -76,12 +84,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
 
-    // Listen for auth changes
+    // Listen for auth changes (avoid refreshing profile on TOKEN_REFRESHED to reduce 429s)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
+        if (event === "TOKEN_REFRESHED") return;
         refreshProfile();
       } else {
         setProfile(null);

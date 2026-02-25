@@ -75,8 +75,10 @@ export function extractCoreCompanyName(name: string): string {
 
 export async function ensureOrganizationForUser(profile: UserProfile): Promise<SupabaseResult<{ organization: any; updatedProfile: UserProfile }>> {
   if (profile.organization_id) {
-    const { data, error } = await supabase.from("organizations").select("*").eq("id", profile.organization_id).single();
-    return { data: { organization: data, updatedProfile: profile }, error };
+    const { data, error } = await supabase.from("organizations").select("*").eq("id", profile.organization_id).maybeSingle();
+    if (error) return { data: null, error };
+    if (!data) return { data: null, error: { message: "Organization not found or access denied. Try signing out and back in.", code: "PGRST116" } as any };
+    return { data: { organization: data, updatedProfile: profile }, error: null };
   }
 
   const fallbackName = profile.full_name || profile.email || "Default Organization";
@@ -108,6 +110,12 @@ export async function ensureOrganizationForUser(profile: UserProfile): Promise<S
 }
 
 export async function ensureActiveEventForOrg(orgId: string): Promise<SupabaseResult<Event>> {
+  // Prefer RPC so event creation succeeds even when client token/RLS is flaky (e.g. after 429 refresh)
+  const { data: rpcEvent, error: rpcError } = await supabase.rpc("ensure_active_event");
+  if (!rpcError && rpcEvent && typeof rpcEvent === "object" && rpcEvent.id) {
+    return { data: rpcEvent as Event, error: null };
+  }
+
   const { data: events, error } = await supabase
     .from("events")
     .select("*")
