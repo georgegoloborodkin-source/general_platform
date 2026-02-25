@@ -9246,7 +9246,7 @@ export default function Dashboard() {
   }, [costLog]);
 
   const createChatThread = useCallback(
-    async (title: string, parentId?: string | null) => {
+    async (title: string) => {
       const eventId = activeEventId || (await ensureActiveEventId());
       if (!eventId) return null;
       const userId = profile?.id || user?.id || null;
@@ -9255,7 +9255,6 @@ export default function Dashboard() {
         .insert({
           event_id: eventId,
           title,
-          parent_id: parentId || null,
           created_by: userId,
         })
         .select("id")
@@ -9286,7 +9285,7 @@ export default function Dashboard() {
         let threadId = payload.threadId;
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(threadId || "");
         if (!threadId || !isUuid) {
-          const newThreadId = await createChatThread("Chat", null);
+          const newThreadId = await createChatThread("Chat");
           if (newThreadId) {
             threadId = newThreadId;
           } else {
@@ -13456,7 +13455,7 @@ export default function Dashboard() {
                 <div className="space-y-3">
                   <Button
                     onClick={async () => {
-                      const newThreadId = await createChatThread(`Chat ${threads.length + 1}`, null);
+                      const newThreadId = await createChatThread(`Chat ${threads.length + 1}`);
                       if (newThreadId) {
                         setActiveThread(newThreadId);
                         setMessages([]);
