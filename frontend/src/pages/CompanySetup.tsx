@@ -6,7 +6,6 @@
  * stored on the organization and shared with all team members.
  */
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { setupCompany } from "../utils/api";
 
 const EXAMPLE_DESCRIPTIONS = [

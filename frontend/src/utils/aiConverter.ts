@@ -396,6 +396,9 @@ export type VerifiableSource = {
 /** Simple source doc from agent (id + title for Sources strip) */
 export type SourceDoc = { id: string; title: string };
 
+/** Image attachment for vision: base64 data + media type */
+export type AgentAskImage = { mediaType: string; data: string };
+
 export async function askAgentStream(
   input: {
     question: string;
@@ -403,6 +406,7 @@ export async function askAgentStream(
     previousMessages?: ChatMessage[];
     webSearchEnabled?: boolean;
     folderIds?: string[];
+    images?: AgentAskImage[];
   },
   onChunk: (text: string) => void,
   onStatus?: (status: string) => void,
@@ -435,6 +439,9 @@ export async function askAgentStream(
     };
     if (input.folderIds && input.folderIds.length > 0) {
       payload.folder_ids = input.folderIds;
+    }
+    if (input.images && input.images.length > 0) {
+      payload.images = input.images.map((img) => ({ mediaType: img.mediaType, data: img.data }));
     }
     const response = await fetch(`${baseUrl}/ask/agent/stream`, {
       method: "POST",

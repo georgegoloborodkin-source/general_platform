@@ -6,6 +6,7 @@
  *   Team:  Select role → Enter invitation code → Dashboard (inherits org context)
  */
 import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import CompanySetup from "./CompanySetup";
 
 interface Props {
@@ -28,19 +29,25 @@ export default function RoleSelection({ userId, onComplete }: Props) {
   const btnPrimary = "w-full rounded-lg bg-amber-500 text-slate-950 hover:bg-amber-400 font-semibold h-11 shadow-[0_2px_12px_-2px_rgba(245,158,11,0.4)] disabled:opacity-50 transition-all";
   const btnSecondary = "w-full rounded-lg border-slate-600 bg-slate-800/50 text-slate-200 hover:bg-slate-700/60 font-medium h-11 transition-all";
 
-  // Admin: enter company name → create org
   const handleCreateOrg = async () => {
     if (!orgName.trim()) return;
     setIsSaving(true);
     setError(null);
 
     try {
-      // TODO: Call Supabase RPC to create org + set user as admin
-      // For now, simulate
-      const fakeOrgId = crypto.randomUUID();
-      const fakeCode = "ORB-" + Math.random().toString(36).substring(2, 8).toUpperCase();
-      setOrgId(fakeOrgId);
-      setCreatedCode(fakeCode);
+      const slug = orgName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      const { data, error: rpcError } = await supabase.rpc("ensure_user_organization", {
+        org_name: orgName.trim(),
+        org_slug: slug || "org",
+      });
+      if (rpcError) throw new Error(rpcError.message);
+      if (!data?.id) throw new Error("Organization creation failed — no ID returned.");
+
+      // Update role to managing_partner for the admin
+      await supabase.from("user_profiles").update({ role: "managing_partner" }).eq("id", userId);
+
+      setOrgId(data.id);
+      setCreatedCode(data.invitation_code || null);
       setStep("admin_setup");
     } catch (err: any) {
       setError(err.message);
@@ -49,18 +56,20 @@ export default function RoleSelection({ userId, onComplete }: Props) {
     }
   };
 
-  // Team: enter invitation code → join org
   const handleJoinOrg = async () => {
     if (!invitationCode.trim()) return;
     setIsSaving(true);
     setError(null);
 
     try {
-      // TODO: Call Supabase RPC to join org by invitation code
-      // The team member inherits the org's system_prompt automatically
-      const fakeOrgId = crypto.randomUUID();
-      setOrgId(fakeOrgId);
-      onComplete(fakeOrgId);
+      const { data, error: rpcError } = await supabase.rpc("join_organization_by_code", {
+        code: invitationCode.trim(),
+      });
+      if (rpcError) throw new Error(rpcError.message);
+      if (!data?.id) throw new Error("Could not join organization — check your code and try again.");
+
+      setOrgId(data.id);
+      onComplete(data.id);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -98,6 +107,7 @@ export default function RoleSelection({ userId, onComplete }: Props) {
                 onChange={(e) => setOrgName(e.target.value)}
                 placeholder="e.g., Apex Trading, Summit Consulting"
                 className="w-full rounded-lg border border-slate-600 bg-slate-800/50 text-white placeholder:text-slate-500 px-4 py-3 text-sm focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 outline-none"
+                onKeyDown={(e) => { if (e.key === "Enter" && orgName.trim()) handleCreateOrg(); }}
               />
             </div>
             {error && (
@@ -135,6 +145,7 @@ export default function RoleSelection({ userId, onComplete }: Props) {
                 onChange={(e) => setInvitationCode(e.target.value.toUpperCase())}
                 placeholder="ORB-ABC123"
                 className="w-full rounded-lg border border-slate-600 bg-slate-800/50 text-white placeholder:text-slate-500 px-4 py-3 text-center font-mono text-lg tracking-wider focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 outline-none"
+                onKeyDown={(e) => { if (e.key === "Enter" && invitationCode.trim()) handleJoinOrg(); }}
               />
             </div>
             {error && (

@@ -8,6 +8,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import AuthCallback from "./pages/AuthCallback";
+import Onboarding from "./pages/Onboarding";
 
 const queryClient = new QueryClient();
 const PRODUCTION_HOSTNAME = "general-platform.vercel.app";
@@ -56,6 +57,14 @@ const App = () => {
                 element={
                   <ProtectedRoute requireAuth>
                     <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/onboarding"
+                element={
+                  <ProtectedRoute requireAuth requireOrg={false}>
+                    <Onboarding />
                   </ProtectedRoute>
                 }
               />

@@ -8492,14 +8492,40 @@ ALWAYS use your tools to find information before answering. Never guess or say "
 MAX_AGENT_ITERATIONS = 4
 
 
+class AgentAskImage(BaseModel):
+    """Base64 image for vision: PNG/JPEG supported."""
+    media_type: str = Field(alias="mediaType")  # "image/png" or "image/jpeg"
+    data: str  # base64-encoded
+
+    model_config = {"populate_by_name": True}
+
+
 class AgentAskRequest(BaseModel):
-    question: str
+    question: str = ""
     event_id: str = Field(default="", alias="eventId")
     previous_messages: List[ChatMessage] = Field(default_factory=list, alias="previousMessages")
     web_search_enabled: bool = Field(default=False, alias="webSearchEnabled")
     folder_ids: List[str] = Field(default_factory=list, alias="folderIds")
+    images: List[AgentAskImage] = Field(default_factory=list)
 
     model_config = {"populate_by_name": True}
+
+
+async def _load_org_system_prompt(event_id: str) -> str:
+    """Resolve event_id → organization → system_prompt. Falls back to AGENT_SYSTEM_PROMPT."""
+    try:
+        sb = get_supabase()
+        if sb:
+            ev = sb.table("events").select("organization_id").eq("id", event_id).single().execute()
+            org_id = (ev.data or {}).get("organization_id")
+            if org_id:
+                org = sb.table("organizations").select("system_prompt").eq("id", org_id).single().execute()
+                prompt = (org.data or {}).get("system_prompt", "").strip()
+                if prompt and len(prompt) > 50:
+                    return prompt
+    except Exception:
+        pass
+    return AGENT_SYSTEM_PROMPT
 
 
 @app.post("/ask/agent/stream")
@@ -8510,19 +8536,40 @@ async def ask_agent_stream(request: AgentAskRequest, auth: AuthContext = Depends
         if get_supabase() is None:
             raise HTTPException(status_code=503, detail="Supabase not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.")
         question = (request.question or "").strip()
-        if not question:
-            raise HTTPException(status_code=400, detail="question is required.")
+        images = request.images or []
+        if not question and not images:
+            raise HTTPException(status_code=400, detail="question or at least one image is required.")
+        if question:
+            resolved_question = await rewrite_query_with_llm(question, request.previous_messages or [])
+        else:
+            resolved_question = "What do you see in this image? Please describe and analyze it."
 
         event_id = (request.event_id or "").strip()
         if not event_id:
             raise HTTPException(status_code=400, detail="event_id is required.")
 
-        resolved_question = await rewrite_query_with_llm(question, request.previous_messages or [])
+        system_prompt = await _load_org_system_prompt(event_id)
 
         messages: List[dict] = []
         for msg in (request.previous_messages or [])[-10:]:
             messages.append({"role": msg.role, "content": msg.content})
-        messages.append({"role": "user", "content": resolved_question})
+
+        # Build last user message: text + optional image blocks for Claude vision
+        if not images:
+            messages.append({"role": "user", "content": resolved_question})
+        else:
+            content_blocks: List[dict] = [{"type": "text", "text": resolved_question}]
+            for img in images:
+                media = (img.media_type or "image/png").lower()
+                if media not in ("image/png", "image/jpeg", "image/jpg"):
+                    media = "image/png"
+                if media == "image/jpg":
+                    media = "image/jpeg"
+                content_blocks.append({
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": media, "data": img.data},
+                })
+            messages.append({"role": "user", "content": content_blocks})
 
         tools = list(AGENT_TOOLS)
         if request.web_search_enabled:
@@ -8555,7 +8602,7 @@ async def ask_agent_stream(request: AgentAskRequest, auth: AuthContext = Depends
                                 model=model_name,
                                 max_tokens=max_tokens,
                                 temperature=0.1,
-                                system=AGENT_SYSTEM_PROMPT,
+                                system=system_prompt,
                                 messages=current_messages,
                                 tools=tools,
                             )
@@ -8569,7 +8616,7 @@ async def ask_agent_stream(request: AgentAskRequest, auth: AuthContext = Depends
                                         model=fallback,
                                         max_tokens=max_tokens,
                                         temperature=0.1,
-                                        system=AGENT_SYSTEM_PROMPT,
+                                        system=system_prompt,
                                         messages=current_messages,
                                         tools=tools,
                                     )
@@ -8667,7 +8714,7 @@ async def ask_agent_stream(request: AgentAskRequest, auth: AuthContext = Depends
                         model=model_name,
                         max_tokens=max_tokens,
                         temperature=0.1,
-                        system=AGENT_SYSTEM_PROMPT,
+                        system=system_prompt,
                         messages=current_messages,
                     ) as final_stream:
                         async for event in final_stream:

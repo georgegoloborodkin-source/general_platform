@@ -318,10 +318,7 @@ function ThreadTree({ threads, active, onSelect }: { threads: Thread[]; active: 
         style={{ paddingLeft: `${12 + level * 16}px` }}
         onClick={() => onSelect(t.id)}
       >
-        <span className="text-xs text-slate-500 font-mono">
-          {level === 0 ? "в–ё" : "в””"}
-        </span>
-        <span className={`text-sm ${active === t.id ? "font-semibold" : ""}`}>{t.title}</span>
+        <span className={`text-sm ${active === t.id ? "font-semibold" : ""}`}>{typeof t.title === "string" ? t.title.replace(/^[\s\u2022\u2023\u2043\u2219\u00A0\u2013\u2014\u0432\u0451]+/, "").trimStart() : t.title}</span>
       </div>
     );
   };

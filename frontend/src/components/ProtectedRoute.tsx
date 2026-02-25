@@ -1,4 +1,4 @@
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Loader2 } from "lucide-react";
 
@@ -6,14 +6,17 @@ interface ProtectedRouteProps {
   children: React.ReactNode;
   requireAuth?: boolean;
   requireRole?: 'organizer' | 'managing_partner' | 'team_member';
+  requireOrg?: boolean;
 }
 
 export function ProtectedRoute({ 
   children, 
   requireAuth = true,
-  requireRole 
+  requireRole,
+  requireOrg = true,
 }: ProtectedRouteProps) {
   const { user, profile, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -25,6 +28,10 @@ export function ProtectedRoute({
 
   if (requireAuth && !user) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (requireOrg && profile && !profile.organization_id && location.pathname !== "/onboarding") {
+    return <Navigate to="/onboarding" replace />;
   }
 
   if (requireRole && profile?.role !== requireRole) {
@@ -42,4 +49,3 @@ export function ProtectedRoute({
 
   return <>{children}</>;
 }
-
