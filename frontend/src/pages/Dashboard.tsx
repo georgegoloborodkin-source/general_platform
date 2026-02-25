@@ -6059,7 +6059,7 @@ function OnboardingTab({
         </CardContent>
       </Card>
 
-      {(profile?.role === "managing_partner" || profile?.role === "organizer") && (
+      {(profile?.role === "managing_partner" || profile?.role === "organizer" || profile?.role === "admin") && (
         <>
           <TeamInvitationForm />
           {profile?.organization_id && <TeamMembersList />}
@@ -12741,7 +12741,7 @@ export default function Dashboard() {
                   Chat
                 </button>
               )}
-              {(profile?.role === "managing_partner" || profile?.role === "organizer") && (
+              {(profile?.role === "managing_partner" || profile?.role === "organizer" || profile?.role === "admin") && (
                 <button
                   onClick={() => setActiveTab("onboarding")}
                   className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -12751,7 +12751,7 @@ export default function Dashboard() {
                   Onboarding
                 </button>
               )}
-              {(profile?.role === "managing_partner" || profile?.role === "organizer") && (
+              {(profile?.role === "managing_partner" || profile?.role === "organizer" || profile?.role === "admin") && (
                 <button
                   onClick={() => setActiveTab("admin")}
                   className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -13358,7 +13358,7 @@ export default function Dashboard() {
           </TabsContent>
 
           {/* Admin Tab — invitation code + team members (MD/organizer only) */}
-          {(profile?.role === "managing_partner" || profile?.role === "organizer") && (
+          {(profile?.role === "managing_partner" || profile?.role === "organizer" || profile?.role === "admin") && (
             <TabsContent value="admin">
               <div className="space-y-6 max-w-2xl">
                 <div className="flex items-center gap-2 mb-2">

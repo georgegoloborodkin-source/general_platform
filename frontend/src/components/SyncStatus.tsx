@@ -37,7 +37,7 @@ export function SyncStatus() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState<string | null>(null);
 
-  const isMD = profile?.role === "managing_partner" || profile?.role === "organizer";
+  const isMD = profile?.role === "managing_partner" || profile?.role === "organizer" || profile?.role === "admin";
   const orgId = profile?.organization_id;
 
   const loadSyncConfigs = useCallback(async () => {

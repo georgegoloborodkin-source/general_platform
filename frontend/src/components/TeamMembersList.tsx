@@ -37,7 +37,7 @@ export function TeamMembersList() {
   const [memberToRemove, setMemberToRemove] = useState<TeamMember | null>(null);
   const hasLoadedRef = useRef(false);
 
-  const isMD = profile?.role === "managing_partner" || profile?.role === "organizer";
+  const isMD = profile?.role === "managing_partner" || profile?.role === "organizer" || profile?.role === "admin";
   const orgId = profile?.organization_id;
 
   useEffect(() => {
@@ -134,6 +134,7 @@ export function TeamMembersList() {
   const getRoleBadgeVariant = (role: string) => {
     switch (role) {
       case "managing_partner":
+      case "admin":
         return "default";
       case "organizer":
         return "secondary";
@@ -150,6 +151,8 @@ export function TeamMembersList() {
         return "Managing Partner";
       case "organizer":
         return "Organizer";
+      case "admin":
+        return "Admin";
       case "team_member":
         return "Team Member";
       default:
@@ -176,7 +179,7 @@ export function TeamMembersList() {
   }
 
   // Calculate members directly - no need for useMemo here as filtering is cheap
-  const mdMembers = teamMembers.filter((m) => m.role === "managing_partner" || m.role === "organizer");
+  const mdMembers = teamMembers.filter((m) => m.role === "managing_partner" || m.role === "organizer" || m.role === "admin");
   const regularMembers = teamMembers.filter((m) => m.role === "team_member");
 
   return (

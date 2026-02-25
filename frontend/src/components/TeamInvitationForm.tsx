@@ -29,7 +29,7 @@ export function TeamInvitationForm() {
   const [inviteRole, setInviteRole] = useState<"team_member" | "organizer" | "managing_partner">("team_member");
   const [isSendingInvite, setIsSendingInvite] = useState(false);
 
-  const isMD = profile?.role === "managing_partner" || profile?.role === "organizer";
+  const isMD = profile?.role === "managing_partner" || profile?.role === "organizer" || profile?.role === "admin";
   const orgId = profile?.organization_id;
 
   useEffect(() => {
