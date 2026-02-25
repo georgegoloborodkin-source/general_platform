@@ -8008,21 +8008,24 @@ export default function Dashboard() {
 
   const getGoogleAccessToken = useCallback(async (forceRefresh = false): Promise<string | null> => {
     const tryResolve = async (doRefreshSession: boolean): Promise<string | null> => {
+      let session: import("@supabase/supabase-js").Session | null = null;
+
       if (doRefreshSession) {
         try {
-          let p = sessionRefreshInFlightRef.current;
-          if (!p) {
-            p = supabase.auth.refreshSession().then(() => {}).catch(() => {});
-            sessionRefreshInFlightRef.current = p;
-            p.finally(() => { sessionRefreshInFlightRef.current = null; });
+          const { data, error } = await supabase.auth.refreshSession();
+          if (!error && data?.session) {
+            session = data.session;
           }
-          await p;
         } catch {
-          // ignore
+          // 429 or network error — fall through to getSession cache
         }
       }
-      const { data } = await supabase.auth.getSession();
-      const session = data.session;
+
+      if (!session) {
+        const { data } = await supabase.auth.getSession();
+        session = data.session;
+      }
+
       const providerToken = session?.provider_token ?? null;
       const providerRefreshToken = session?.provider_refresh_token ?? null;
       if (providerToken || providerRefreshToken) {
@@ -8040,7 +8043,7 @@ export default function Dashboard() {
       const storedAccess = getStoredGoogleAccessToken();
       if (storedAccess && !forceRefresh) return storedAccess;
 
-      // 3) Refresh via backend (so we don't ask user to re-login when token expired)
+      // 3) Refresh Google token via backend (doesn't need Supabase session)
       const refreshToken = providerRefreshToken || getStoredGoogleRefreshToken();
       if (refreshToken) {
         const newToken = await refreshGoogleAccessToken(refreshToken);
@@ -8050,11 +8053,10 @@ export default function Dashboard() {
         }
       }
 
-      return providerToken ?? null;
+      return providerToken ?? storedAccess ?? null;
     };
 
     let token = await tryResolve(forceRefresh);
-    // If still no token, try once more after refreshing Supabase session (avoids re-login when session was stale)
     if (!token) {
       token = await tryResolve(true);
     }

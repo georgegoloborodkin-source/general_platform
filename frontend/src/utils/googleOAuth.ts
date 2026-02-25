@@ -16,14 +16,35 @@ export function getGoogleOAuthRedirectTo(): string {
  * Redirects to backend -> Google -> back to frontend. No reliance on Supabase provider_token.
  */
 export async function triggerGoogleOAuthForDrive(): Promise<void> {
-  clearMyToken404Cache(); // so after redirect we hit backend again for the new token
+  clearMyToken404Cache();
+
+  let accessToken: string | undefined;
+
+  // 1. Try cached session first (no network request)
   const { data: sessionData } = await supabase.auth.getSession();
-  const accessToken = sessionData?.session?.access_token;
+  accessToken = sessionData?.session?.access_token;
+
+  // 2. If no token (expired / 429'd earlier), do ONE explicit refresh
+  if (!accessToken) {
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError) {
+      const msg = refreshError.message ?? "";
+      if (msg.includes("429") || msg.toLowerCase().includes("too many")) {
+        throw new Error("Too many requests. Please wait 60 seconds and try again, or sign out and sign back in.");
+      }
+      throw new Error(
+        "You must be signed in to connect Google Drive. If this keeps happening, sign out and sign back in."
+      );
+    }
+    accessToken = refreshData?.session?.access_token;
+  }
+
   if (!accessToken) {
     throw new Error(
-      "You must be signed in to connect Google Drive. If you see \"Too Many Requests\", wait 60 seconds and try again, or sign out and sign back in."
+      "You must be signed in to connect Google Drive. Sign out and sign back in to fix this."
     );
   }
+
   const res = await fetch(`${BACKEND_ORIGIN}/auth/google-drive/start`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
