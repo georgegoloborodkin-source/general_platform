@@ -1711,12 +1711,6 @@ function SourcesTab({
   const [gmailIncludeAttachments, setGmailIncludeAttachments] = useState(true);
   const [gmailSyncResults, setGmailSyncResults] = useState<{ synced: number; skipped: number; errors: number } | null>(null);
 
-  // My Account — editable company info
-  const [companyAccountName, setCompanyAccountName] = useState("");
-  const [companyAccountDescription, setCompanyAccountDescription] = useState("");
-  const [companyAccountLoading, setCompanyAccountLoading] = useState(false);
-  const [companyAccountSaving, setCompanyAccountSaving] = useState(false);
-
   const MAX_IMPORT_CHARS = 24000;
   const MAX_PDF_PAGES = 6;
   const canImport = Boolean(activeEventId);
@@ -7374,6 +7368,12 @@ export default function Dashboard() {
     aiReasoning: string;
     sourceDocIds?: string[];
   } | null>(null);
+
+  // My Account — editable company info (used by Account tab)
+  const [companyAccountName, setCompanyAccountName] = useState("");
+  const [companyAccountDescription, setCompanyAccountDescription] = useState("");
+  const [companyAccountLoading, setCompanyAccountLoading] = useState(false);
+  const [companyAccountSaving, setCompanyAccountSaving] = useState(false);
   
   const embeddingsDisabledRef = useRef(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
