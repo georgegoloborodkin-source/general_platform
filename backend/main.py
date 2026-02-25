@@ -710,15 +710,28 @@ _CORS_ALLOWED = [
     "http://127.0.0.1:5174",
 ]
 
+
+def _cors_origin_allowed(origin: str) -> bool:
+    if not origin:
+        return False
+    if origin in _CORS_ALLOWED:
+        return True
+    # Allow Vercel preview deployments
+    if origin.endswith(".vercel.app"):
+        return True
+    return False
+
+
 @app.middleware("http")
 async def add_cors_headers(request, call_next):
     """Ensure CORS headers on every response so Vercel can call the API."""
     origin = request.headers.get("origin", "")
     response = await call_next(request)
-    if origin in _CORS_ALLOWED:
+    if _cors_origin_allowed(origin):
         response.headers["Access-Control-Allow-Origin"] = origin
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept"
+    response.headers["Access-Control-Max-Age"] = "86400"
     return response
 
 app.add_middleware(
@@ -8040,13 +8053,21 @@ class CompanySetupResponse(BaseModel):
     message: str
 
 
+@app.options("/company/setup")
+async def company_setup_options():
+    """CORS preflight for /company/setup."""
+    return {}
+
 @app.post("/company/setup", response_model=CompanySetupResponse)
 async def setup_company(request: CompanySetupRequest):
     """MD pastes company description → generate system prompt → store on org."""
     if not request.company_description.strip():
         raise HTTPException(status_code=400, detail="Company description is required")
 
-    system_prompt = await _generate_system_prompt(request.company_description)
+    try:
+        system_prompt = await _generate_system_prompt(request.company_description)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate AI context: {str(e)[:200]}")
 
     try:
         sb = get_supabase()
@@ -8056,7 +8077,7 @@ async def setup_company(request: CompanySetupRequest):
                 "system_prompt": system_prompt,
             }).eq("id", request.organization_id).execute()
     except Exception as e:
-        pass
+        pass  # non-fatal: prompt was generated, frontend can show it
 
     return CompanySetupResponse(
         system_prompt=system_prompt,

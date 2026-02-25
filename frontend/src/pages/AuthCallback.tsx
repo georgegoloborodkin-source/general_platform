@@ -38,8 +38,9 @@ export default function AuthCallback() {
               saveGoogleProviderTokens(session.provider_token, session.provider_refresh_token);
               window.history.replaceState(null, "", window.location.pathname);
               const user = data.session.user;
-              const { data: existingProfile, error: profileError } = await supabase.from("user_profiles").select("id, organization_id").eq("id", user.id).single();
-              if (profileError?.code === "PGRST116") {
+              const { data: existingProfile, error: profileError } = await supabase.from("user_profiles").select("id, organization_id").eq("id", user.id).maybeSingle();
+              if (profileError) throw profileError;
+              if (!existingProfile) {
                 await supabase.from("user_profiles").upsert({
                   id: user.id,
                   email: user.email,
@@ -49,7 +50,7 @@ export default function AuthCallback() {
               }
               toast({ title: "Successfully signed in!", description: "Welcome to the platform." });
               await new Promise((r) => setTimeout(r, 200));
-              const hasOrg = existingProfile?.organization_id;
+              const hasOrg = !!existingProfile?.organization_id;
               navigate(hasOrg ? "/" : "/onboarding", { replace: true });
               return;
             }
@@ -91,9 +92,10 @@ export default function AuthCallback() {
           .from("user_profiles")
           .select("*")
           .eq("id", user.id)
-          .single();
+          .maybeSingle();
 
-        if (profileError && profileError.code === "PGRST116") {
+        if (profileError) throw profileError;
+        if (!profile) {
           const { error: upsertError } = await supabase.from("user_profiles").upsert(
             {
               id: user.id,
@@ -114,7 +116,7 @@ export default function AuthCallback() {
         });
 
         await new Promise((resolve) => setTimeout(resolve, 200));
-        const hasOrg = profile?.organization_id;
+        const hasOrg = !!profile?.organization_id;
         navigate(hasOrg ? "/" : "/onboarding", { replace: true });
       } catch (error: any) {
         console.error("Auth callback error:", error);
