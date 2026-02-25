@@ -17,10 +17,23 @@ export function getGoogleOAuthRedirectTo(): string {
  */
 export async function triggerGoogleOAuthForDrive(): Promise<void> {
   clearMyToken404Cache(); // so after redirect we hit backend again for the new token
-  const { data: sessionData } = await supabase.auth.getSession();
-  const accessToken = sessionData?.session?.access_token;
+  let { data: sessionData } = await supabase.auth.getSession();
+  let accessToken = sessionData?.session?.access_token;
   if (!accessToken) {
-    throw new Error("You must be signed in. Sign in first, then connect Google Drive.");
+    try {
+      await supabase.auth.refreshSession();
+      const retry = await supabase.auth.getSession();
+      sessionData = retry.data;
+      accessToken = sessionData?.session?.access_token;
+    } catch {
+      // ignore refresh errors (e.g. 429 Too Many Requests)
+    }
+  }
+  if (!accessToken) {
+    throw new Error(
+      "You must be signed in. Sign in first, then connect Google Drive. " +
+      "If you saw \"Too Many Requests\", wait a minute and try again, or sign out and sign back in."
+    );
   }
   const res = await fetch(`${BACKEND_ORIGIN}/auth/google-drive/start`, {
     method: "POST",
@@ -29,6 +42,9 @@ export async function triggerGoogleOAuthForDrive(): Promise<void> {
   });
   if (!res.ok) {
     const text = await res.text();
+    if (res.status === 429) {
+      throw new Error("Too many requests. Please wait a minute and try again, or sign out and sign back in.");
+    }
     throw new Error(text || `Backend returned ${res.status}`);
   }
   const json = await res.json();

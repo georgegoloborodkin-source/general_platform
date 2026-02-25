@@ -8095,11 +8095,13 @@ async def get_company_context(org_id: str):
                 "id, name, company_description, system_prompt"
             ).eq("id", org_id).single().execute()
             if result.data:
+                raw_prompt = result.data.get("system_prompt", "") or _FALLBACK_PROMPT
+                raw_prompt = re.sub(r"\bOrbit\s+AI\b", "Company Assistant", raw_prompt, flags=re.IGNORECASE)
                 return {
                     "organization_id": result.data["id"],
                     "company_name": result.data.get("name", ""),
                     "company_description": result.data.get("company_description", ""),
-                    "system_prompt": result.data.get("system_prompt", "") or _FALLBACK_PROMPT,
+                    "system_prompt": raw_prompt,
                 }
     except Exception as e:
         pass
@@ -8535,6 +8537,9 @@ async def _load_org_system_prompt(event_id: str) -> str:
             if org_id:
                 org = sb.table("organizations").select("system_prompt").eq("id", org_id).single().execute()
                 prompt = (org.data or {}).get("system_prompt", "").strip()
+                # Normalize legacy branding: stored prompts may still say "Orbit AI"
+                if prompt:
+                    prompt = re.sub(r"\bOrbit\s+AI\b", "Company Assistant", prompt, flags=re.IGNORECASE)
                 if prompt and len(prompt) > 50:
                     return prompt
     except Exception:

@@ -7342,6 +7342,7 @@ export default function Dashboard() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatAbortRef = useRef<AbortController | null>(null);
+  const sessionRefreshInFlightRef = useRef<Promise<void> | null>(null);
 
   // Helper function to scroll chat container to bottom
   const scrollChatToBottom = useCallback(() => {
@@ -7770,10 +7771,12 @@ export default function Dashboard() {
     }
     const { data: event, error: eventError } = await ensureActiveEventForOrg(orgData.organization.id);
     if (eventError) {
-      console.error("ensureActiveEventId: Event creation error:", eventError);
+      const isRlsOrAuth = eventError?.code === "42501" || eventError?.code === "PGRST301" || (eventError?.message || "").includes("row-level security");
       toast({
         title: "Event creation failed",
-        description: eventError.message || "Could not create an active event. Please refresh.",
+        description: isRlsOrAuth
+          ? "Your session may have expired. Try signing out and signing back in, or wait a moment and try again."
+          : (eventError.message || "Could not create an active event. Please refresh."),
         variant: "destructive",
       });
       return null;
@@ -7956,7 +7959,13 @@ export default function Dashboard() {
     const tryResolve = async (doRefreshSession: boolean): Promise<string | null> => {
       if (doRefreshSession) {
         try {
-          await supabase.auth.refreshSession();
+          let p = sessionRefreshInFlightRef.current;
+          if (!p) {
+            p = supabase.auth.refreshSession().then(() => {}).catch(() => {});
+            sessionRefreshInFlightRef.current = p;
+            p.finally(() => { sessionRefreshInFlightRef.current = null; });
+          }
+          await p;
         } catch {
           // ignore
         }
