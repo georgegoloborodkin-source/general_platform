@@ -12705,7 +12705,9 @@ export default function Dashboard() {
         setThreads((prev) => [...prev, { id: createdId, title: "Main thread" }]);
         setActiveThread(createdId);
       } else {
-        threadId = `t-${Date.now()}`;
+        console.error("[Chat] Failed to create chat thread — cannot persist messages.");
+        toast({ title: "Chat Error", description: "Could not create a chat thread. Please reload and try again.", variant: "destructive" });
+        return;
       }
     }
     const id = `m-${Date.now()}`;
