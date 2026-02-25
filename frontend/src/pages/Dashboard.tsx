@@ -111,6 +111,7 @@ import {
   Plus,
   ListTodo,
   GanttChart,
+  Key,
 } from "lucide-react";
 import {
   BarChart,
@@ -12750,6 +12751,16 @@ export default function Dashboard() {
                   Onboarding
                 </button>
               )}
+              {(profile?.role === "managing_partner" || profile?.role === "organizer") && (
+                <button
+                  onClick={() => setActiveTab("admin")}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                    activeTab === "admin" ? "bg-blue-600/15 text-blue-600" : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                  }`}
+                >
+                  Admin
+                </button>
+              )}
               <button
                 onClick={() => setActiveTab("overview")}
                 className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -13345,6 +13356,28 @@ export default function Dashboard() {
               }}
             />
           </TabsContent>
+
+          {/* Admin Tab — invitation code + team members (MD/organizer only) */}
+          {(profile?.role === "managing_partner" || profile?.role === "organizer") && (
+            <TabsContent value="admin">
+              <div className="space-y-6 max-w-2xl">
+                <div className="flex items-center gap-2 mb-2">
+                  <Key className="h-5 w-5 text-blue-600" />
+                  <h2 className="text-lg font-bold text-slate-900">Admin — invite your team</h2>
+                </div>
+                <p className="text-sm text-slate-500 mb-4">
+                  Share the invitation code below with team members. They sign up, choose <strong>Team</strong> on the role screen, then enter the code to join your organization.
+                </p>
+                <TeamInvitationForm />
+                {profile?.organization_id && (
+                  <>
+                    <TeamMembersList />
+                    <SyncStatus />
+                  </>
+                )}
+              </div>
+            </TabsContent>
+          )}
 
           {/* Dashboard Tab (task hub: MD assigns, team sees my tasks + Gantt) */}
           <TabsContent value="overview">
