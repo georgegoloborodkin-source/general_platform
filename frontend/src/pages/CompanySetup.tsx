@@ -30,14 +30,16 @@ const EXAMPLE_DESCRIPTIONS = [
 interface Props {
   organizationId: string;
   companyName: string;
+  invitationCode?: string | null;
   onComplete: () => void;
 }
 
-export default function CompanySetup({ organizationId, companyName, onComplete }: Props) {
+export default function CompanySetup({ organizationId, companyName, invitationCode, onComplete }: Props) {
   const [description, setDescription] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedPrompt, setGeneratedPrompt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [codeCopied, setCodeCopied] = useState(false);
 
   const handleGenerate = async () => {
     if (!description.trim()) return;
@@ -81,6 +83,35 @@ export default function CompanySetup({ organizationId, companyName, onComplete }
         <div className="p-6 space-y-5">
           {!generatedPrompt ? (
             <>
+              {invitationCode && (
+                <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5">
+                  <div className="flex items-center gap-2 mb-2">
+                    <svg className="h-5 w-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span className="text-emerald-200 font-semibold text-sm">Your team invitation code</span>
+                  </div>
+                  <p className="text-slate-400 text-xs mb-3">
+                    Share this code with your team members so they can join your organization.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 rounded-lg border border-emerald-500/30 bg-slate-800/60 px-4 py-3 text-center font-mono text-xl tracking-widest text-white select-all">
+                      {invitationCode}
+                    </div>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(invitationCode);
+                        setCodeCopied(true);
+                        setTimeout(() => setCodeCopied(false), 2000);
+                      }}
+                      className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 px-4 py-3 text-sm font-medium transition-all"
+                    >
+                      {codeCopied ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Examples */}
               <div>
                 <p className="text-xs text-slate-500 mb-2 font-medium uppercase tracking-wider">
@@ -155,6 +186,35 @@ export default function CompanySetup({ organizationId, companyName, onComplete }
                   All team members who join your organization will automatically use this context.
                 </p>
               </div>
+
+              {invitationCode && (
+                <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5">
+                  <div className="flex items-center gap-2 mb-2">
+                    <svg className="h-5 w-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span className="text-emerald-200 font-semibold text-sm">Invite your team</span>
+                  </div>
+                  <p className="text-slate-400 text-xs mb-3">
+                    Share this code with your team members. They sign up, choose <strong className="text-white">Team Member</strong>, and enter this code to join your organization.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 rounded-lg border border-emerald-500/30 bg-slate-800/60 px-4 py-3 text-center font-mono text-xl tracking-widest text-white select-all">
+                      {invitationCode}
+                    </div>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(invitationCode);
+                        setCodeCopied(true);
+                        setTimeout(() => setCodeCopied(false), 2000);
+                      }}
+                      className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 px-4 py-3 text-sm font-medium transition-all"
+                    >
+                      {codeCopied ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs text-slate-500 mb-1 font-medium uppercase tracking-wider">

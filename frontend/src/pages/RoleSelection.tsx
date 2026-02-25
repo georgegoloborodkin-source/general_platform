@@ -83,6 +83,7 @@ export default function RoleSelection({ userId, onComplete }: Props) {
       <CompanySetup
         organizationId={orgId}
         companyName={orgName}
+        invitationCode={createdCode}
         onComplete={() => onComplete(orgId)}
       />
     );
