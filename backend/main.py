@@ -1628,7 +1628,7 @@ def is_meta_question(question: str) -> bool:
         "how can you help",
         "what features",
         "what functionality",
-        "what is company ai",
+        "what is company assistant",
         "who are you",
         "introduce yourself",
         "what is this",
@@ -2160,16 +2160,16 @@ def build_answer_prompt(
     is_raw_text = is_raw_text_request(question)
     
     if is_meta:
-        # Meta questions: answer with general knowledge about Company AI capabilities
+        # Meta questions: answer with general knowledge about Company Assistant capabilities
         connections_section = ""
         if connection_lines:
             connections_section = f"\n\nYou also have access to a Company Connections Graph with {len(connection_lines)} recorded connections:\n{connections_block}\n\nYou can tell users about these connections when relevant."
-        return f"""You are Company AI, a VC intelligence system built for investment teams. Answer this question about your capabilities and features.
+        return f"""You are Company Assistant, a VC intelligence system built for investment teams. Answer this question about your capabilities and features.
 
 Question:
 {question}
 
-Answer based on what Company AI can do:
+Answer based on what Company Assistant can do:
 - Answer questions about uploaded documents (pitch decks, memos, meeting notes)
 - Extract structured information from unstructured documents
 - Track investment decisions and outcomes
@@ -2219,7 +2219,7 @@ Be helpful and specific. Explain what you can do and how you help investment tea
         # Build the prompt with conversation history at the top
         history_section = conversation_context if conversation_context else "\n\n=== PREVIOUS CONVERSATION HISTORY ===\n(No previous conversation history available)\n=== END OF CONVERSATION HISTORY ===\n"
         
-        return f"""You are Company AI, a VC intelligence system. You answer questions based on the provided sources and conversation history.
+        return f"""You are Company Assistant, a VC intelligence system. You answer questions based on the provided sources and conversation history.
 
 {history_section}
 {company_highlight}
@@ -2452,7 +2452,7 @@ async def call_anthropic_answer(
         tools.append(ANTHROPIC_WEB_SEARCH_TOOL)
 
     system_msg = (
-        "You are Company AI, a VC intelligence system. You answer questions based on "
+        "You are Company Assistant, a VC intelligence system. You answer questions based on "
         "provided sources and the Company Connections Graph. Cite sources with [1], [2], etc. "
         "When a user asks about a company, check the Connections Graph for relationships. "
         "If the user asks WHAT a company IS or what it does, focus on answering that question — "
@@ -4207,7 +4207,7 @@ async def stream_anthropic_answer(prompt: str, question: str = "", sources: List
         tools.append(ANTHROPIC_WEB_SEARCH_TOOL)
 
     system_msg = (
-        "You are Company AI, a VC intelligence system. You answer questions based on "
+        "You are Company Assistant, a VC intelligence system. You answer questions based on "
         "provided sources and the Company Connections Graph. Cite sources with [1], [2], etc. "
         "When a user asks about a company, check the Connections Graph for relationships. "
         "If the user asks WHAT a company IS or what it does, focus on answering that question — "
@@ -4731,7 +4731,7 @@ async def system2_refine_stream(request: System2RefineRequest):
     Takes the draft answer + additional context from follow-up searches
     and produces an improved, refined final answer via streaming SSE.
     """
-    prompt = f"""You are Company AI, a VC intelligence synthesis agent performing iterative refinement.
+    prompt = f"""You are Company Assistant, a VC intelligence synthesis agent performing iterative refinement.
 
 You previously produced a draft answer, but upon reflection, you identified gaps.
 Additional data has been retrieved. Your job: produce an IMPROVED, REFINED answer
@@ -5055,7 +5055,7 @@ def build_multiagent_answer_prompt(
             + "\n=== END HISTORY ===\n"
         )
 
-    return f"""You are Company AI, a VC intelligence synthesis agent. You received pre-retrieved context from multiple retrieval agents. Your job is to produce a single, coherent, well-cited answer.
+    return f"""You are Company Assistant, a VC intelligence synthesis agent. You received pre-retrieved context from multiple retrieval agents. Your job is to produce a single, coherent, well-cited answer.
 
 CITATION RULES:
 - Cite document sources with [1], [2], etc.
@@ -7119,7 +7119,7 @@ async def suggest_connections(request: SuggestConnectionsRequest, auth: AuthCont
     if request.question:
         question_context = f"\nThe user asked: \"{request.question}\""
 
-    prompt = f"""You are Company AI, a VC intelligence system. Analyze the following document sources and existing company connections graph.
+    prompt = f"""You are Company Assistant, a VC intelligence system. Analyze the following document sources and existing company connections graph.
 Suggest up to {request.max_suggestions} NEW company connections that are NOT already in the graph.
 
 {question_context}
@@ -8471,7 +8471,7 @@ async def _execute_agent_tool(tool_name: str, tool_input: dict, event_id: str) -
         return f"Tool error ({tool_name}): {str(e)[:300]}"
 
 
-AGENT_SYSTEM_PROMPT = """You are Company AI, a VC portfolio intelligence assistant for a venture capital firm.
+AGENT_SYSTEM_PROMPT = """You are Company Assistant, a VC portfolio intelligence assistant for a venture capital firm.
 
 You have access to tools that let you search the firm's portfolio database, documents, and knowledge graph.
 ALWAYS use your tools to find information before answering. Never guess or say "I don't have access" without searching first.
