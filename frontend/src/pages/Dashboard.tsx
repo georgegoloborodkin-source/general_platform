@@ -193,6 +193,7 @@ import { getStoredGoogleRefreshToken, getStoredGoogleAccessToken, setStoredGoogl
 import { triggerGoogleOAuthForDrive } from "@/utils/googleOAuth";
 import { gmailListMessages, gmailIngestMessage, gmailDownloadAttachment, type GmailIngestResult } from "@/utils/gmailClient";
 import { supabase } from "@/integrations/supabase/client";
+import { getCompanyContext, setupCompany } from "@/utils/api";
 
 // xlsx loaded at runtime from CDN to avoid Vercel build resolution issues
 
@@ -1709,6 +1710,12 @@ function SourcesTab({
   const [gmailMaxPerSync, setGmailMaxPerSync] = useState(50);
   const [gmailIncludeAttachments, setGmailIncludeAttachments] = useState(true);
   const [gmailSyncResults, setGmailSyncResults] = useState<{ synced: number; skipped: number; errors: number } | null>(null);
+
+  // My Account — editable company info
+  const [companyAccountName, setCompanyAccountName] = useState("");
+  const [companyAccountDescription, setCompanyAccountDescription] = useState("");
+  const [companyAccountLoading, setCompanyAccountLoading] = useState(false);
+  const [companyAccountSaving, setCompanyAccountSaving] = useState(false);
 
   const MAX_IMPORT_CHARS = 24000;
   const MAX_PDF_PAGES = 6;
@@ -4005,405 +4012,6 @@ function SourcesTab({
       )}
       {/* ClickUp import temporarily disabled */}
 
-      {/* Folder Management Section */}
-      <Card className="border border-slate-200 bg-white">
-        <CardHeader className="border-b border-slate-200">
-          <CardTitle className="text-slate-900 font-mono font-black uppercase tracking-tight">
-            <Folder className="h-5 w-5 inline mr-2 text-blue-600" />
-            Document Folders
-          </CardTitle>
-          <CardDescription className="text-slate-500 font-mono">Organize your documents into folders for better context filtering.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Folder Selector */}
-          <div>
-            <Label className="text-slate-900 font-mono font-bold">Select Folder for Uploads</Label>
-            <Select value={selectedFolderId} onValueChange={setSelectedFolderId}>
-              <SelectTrigger className="border border-slate-200 bg-white text-slate-900">
-                <SelectValue placeholder="Select a folder" />
-              </SelectTrigger>
-              <SelectContent className="bg-white border border-slate-200 max-h-[300px]">
-                <SelectItem value="none" className="text-slate-900 font-mono hover:bg-blue-50 focus:bg-blue-50 cursor-pointer">
-                  <span className="flex items-center gap-2">
-                    <Folder className="h-4 w-4" />
-                    No Folder (Root)
-                  </span>
-                </SelectItem>
-                {FOLDER_CATEGORIES.map((cat) => {
-                  const catFolders = sourceFolders.filter((f) => (f.category || "Projects") === cat);
-                  return (
-                    <React.Fragment key={cat}>
-                      <div className="px-2 py-1 text-[10px] font-mono text-blue-600/60 uppercase tracking-wider pointer-events-none">
-                        {cat} {catFolders.length > 0 ? `(${catFolders.length})` : "(0)"}
-                      </div>
-                      {catFolders.length > 0 ? (
-                        catFolders.map((folder) => (
-                          <SelectItem key={folder.id} value={folder.id} className="text-slate-900 font-mono hover:bg-blue-50 focus:bg-blue-50 cursor-pointer pl-4">
-                            <span className="flex items-center gap-2">
-                              <Folder className="h-4 w-4 text-blue-600" />
-                              {folder.name}
-                            </span>
-                          </SelectItem>
-                        ))
-                      ) : (
-                        <div className="px-2 py-1.5 text-[10px] font-mono text-slate-400 italic pointer-events-none pl-4">
-                          No folders вЂ” create one below
-                        </div>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-slate-400 font-mono mt-1">
-              This folder will be preselected in the post-upload folder picker.
-            </p>
-          </div>
-          
-          {/* Create New Folder */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <div className="md:col-span-2">
-              <Label className="text-slate-900 font-mono font-bold">Create New Folder</Label>
-              <Input
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                placeholder="e.g., Q1 2026 Deals, Due Diligence, Market Research"
-                className="border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400"
-              />
-            </div>
-            <div>
-              <Label className="text-slate-900 font-mono font-bold">Category</Label>
-              <Select value={newFolderCategory} onValueChange={setNewFolderCategory}>
-                <SelectTrigger className="border border-slate-200 bg-white text-slate-900">
-                  <SelectValue placeholder="Category" />
-                </SelectTrigger>
-                <SelectContent className="bg-[#1a1a2e] border-slate-200">
-                  {FOLDER_CATEGORIES.map((cat) => (
-                    <SelectItem key={cat} value={cat} className="text-slate-900 font-mono hover:bg-blue-50 focus:bg-blue-50 cursor-pointer">
-                      {cat}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-end">
-              <Button
-                onClick={async () => {
-                  if (!newFolderName.trim()) return;
-                  setIsCreatingFolder(true);
-                  try {
-                    const folder = await onCreateFolder(newFolderName.trim(), newFolderCategory);
-                    if (folder) {
-                      setSelectedFolderId(folder.id);
-                      setNewFolderName("");
-                      toast({ title: "Folder created", description: `Created folder "${folder.name}" in ${newFolderCategory}` });
-                    }
-                  } catch (err) {
-                    toast({ title: "Error", description: "Failed to create folder", variant: "destructive" });
-                  } finally {
-                    setIsCreatingFolder(false);
-                  }
-                }}
-                disabled={isCreatingFolder || !newFolderName.trim()}
-                className="w-full border border-slate-200 bg-white text-slate-900 hover:bg-blue-500/10 hover:border-blue-500 hover:text-blue-600 font-bold disabled:opacity-50"
-                variant="outline"
-              >
-                {isCreatingFolder ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FolderPlus className="h-4 w-4 mr-2" />}
-                Create Folder
-              </Button>
-            </div>
-          </div>
-          
-          {/* Existing Folders вЂ“ always show all 5 base categories (Sourcing, Projects, Partners, BD, Mentors/Corporates) */}
-          {(() => {
-            const getRootName = (name: string) => {
-              const first = (name || "").split(" / ")[0].trim();
-              return first || name || "Unnamed";
-            };
-            const expandedRootKey = expandedFolderCategory; // re-use for "cat::root" keys
-            const setExpandedRoot = setExpandedFolderCategory;
-
-            return (
-              <div className="pt-2 border-t border-slate-200">
-                <div className="flex flex-wrap items-center gap-2 mb-2">
-                  <Label className="text-slate-500 font-mono text-xs">
-                    Document Folders ({sourceFolders.length}) вЂ” Sourcing, Projects, Partners, BD, Mentors / Corporates
-                  </Label>
-                  {onSyncCategoriesFromDrive && initialDriveSyncConfig?.folders?.length ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="border-blue-500/50 text-blue-600 hover:bg-blue-600/10 font-mono text-xs"
-                      disabled={isSyncingCategoriesFromDrive}
-                      onClick={async () => {
-                        setIsSyncingCategoriesFromDrive(true);
-                        try {
-                          await onSyncCategoriesFromDrive();
-                          toast({ title: "Categories synced", description: "Folder categories updated from Google Drive roots." });
-                        } catch {
-                          toast({ title: "Sync failed", description: "Could not sync categories from Drive.", variant: "destructive" });
-                        } finally {
-                          setIsSyncingCategoriesFromDrive(false);
-                        }
-                      }}
-                    >
-                      {isSyncingCategoriesFromDrive ? "SyncingвЂ¦" : "Sync categories from Drive"}
-                    </Button>
-                  ) : null}
-                </div>
-
-                {/* Category pills row вЂ” always show all 5 base categories */}
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {FOLDER_CATEGORIES.map((cat) => {
-                    const catFolders = sourceFolders.filter((f) => (f.category || "Projects") === cat);
-                    const isCatOpen = expandedRootKey?.startsWith(cat + "::") || expandedRootKey === cat;
-                    return (
-                      <button
-                        key={cat}
-                        type="button"
-                        onClick={() => setExpandedRoot(isCatOpen ? null : cat)}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded border text-[11px] font-mono transition-all ${
-                          isCatOpen
-                            ? "border-blue-500 bg-blue-600/15 text-blue-600"
-                            : catFolders.length === 0
-                              ? "border-slate-200/15 text-slate-400 hover:border-slate-300 hover:text-slate-500"
-                              : "border-slate-200/25 text-slate-500 hover:border-blue-500/50 hover:text-blue-600"
-                        }`}
-                      >
-                        <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${isCatOpen ? "rotate-90" : ""}`} />
-                        {cat}
-                        <span className={`tabular-nums ${catFolders.length === 0 ? "text-slate-300" : "text-slate-400"}`}>({catFolders.length})</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Bulk selection bar вЂ” Move selected to category */}
-                {selectedFolderIds.size > 0 && (
-                  <div className="flex flex-wrap items-center gap-2 mb-2 p-2 rounded border border-blue-500/30 bg-blue-600/5">
-                    <span className="text-[11px] font-mono text-blue-600 tabular-nums">{selectedFolderIds.size} selected</span>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="sm" className="border-blue-500/50 text-blue-600 hover:bg-blue-600/10 font-mono text-xs">
-                          Move toвЂ¦
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="border-slate-200 bg-white">
-                        {FOLDER_CATEGORIES.map((moveCat) => (
-                          <DropdownMenuItem
-                            key={moveCat}
-                            className="font-mono text-xs text-slate-600 focus:bg-slate-100"
-                            onClick={async () => {
-                              if (!onFoldersCategoriesSaved) return;
-                              const updates = Array.from(selectedFolderIds).map((id) => ({ id, category: moveCat }));
-                              await onFoldersCategoriesSaved(updates);
-                              setSelectedFolderIds(new Set());
-                              toast({ title: "Categories updated", description: `${updates.length} folder(s) в†’ ${moveCat}` });
-                            }}
-                          >
-                            {moveCat}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    <Button variant="ghost" size="sm" className="text-slate-500 hover:text-slate-900 font-mono text-xs" onClick={() => setSelectedFolderIds(new Set())}>
-                      Clear selection
-                    </Button>
-                  </div>
-                )}
-
-                {/* Expanded category в†’ group by root company name (or empty state) */}
-                {expandedRootKey && (() => {
-                  const activeCat = expandedRootKey.includes("::") ? expandedRootKey.split("::")[0] : expandedRootKey;
-                  const activeRoot = expandedRootKey.includes("::") ? expandedRootKey.split("::").slice(1).join("::") : null;
-                  const catFolders = sourceFolders.filter((f) => (f.category || "Projects") === activeCat);
-
-                  // Group by root company name
-                  const rootGroups: Record<string, typeof catFolders> = {};
-                  for (const f of catFolders) {
-                    const root = getRootName(f.name || "");
-                    (rootGroups[root] ??= []).push(f);
-                  }
-                  const sortedRoots = Object.keys(rootGroups).sort((a, b) => a.localeCompare(b));
-
-                  return (
-                    <div className="mt-1 p-2 rounded border border-slate-200/15 bg-white max-h-[300px] overflow-y-auto">
-                      {sortedRoots.length > 0 ? (
-                        <div className="flex items-center gap-2 mb-1.5 pb-1.5 border-b border-slate-200">
-                          <button
-                            type="button"
-                            className="text-[10px] font-mono text-blue-600/80 hover:text-blue-600"
-                            onClick={() => setSelectedFolderIds((prev) => {
-                              const next = new Set(prev);
-                              for (const f of catFolders) next.add(f.id);
-                              return next;
-                            })}
-                          >
-                            Select all in category ({catFolders.length})
-                          </button>
-                        </div>
-                      ) : null}
-                      {sortedRoots.length === 0 ? (
-                        <p className="text-[11px] font-mono text-slate-400 py-2">No folders in this category. Create one above and choose category &quot;{activeCat}&quot;.</p>
-                      ) : null}
-                      {sortedRoots.map((rootName) => {
-                        const folders = rootGroups[rootName];
-                        const isRootOpen = activeRoot === rootName;
-                        const hasSubfolders = folders.length > 1 || (folders.length === 1 && (folders[0].name || "").includes(" / "));
-                        return (
-                          <div key={rootName} className="mb-0.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (hasSubfolders) {
-                                  setExpandedRoot(isRootOpen ? activeCat : `${activeCat}::${rootName}`);
-                                } else {
-                                  setSelectedFolderId(folders[0].id);
-                                }
-                              }}
-                              className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-left text-[11px] font-mono transition-all ${
-                                isRootOpen
-                                  ? "bg-blue-600/10 text-blue-600"
-                                  : selectedFolderId && folders.some((f) => f.id === selectedFolderId)
-                                    ? "bg-blue-600/5 text-blue-600/80"
-                                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                              }`}
-                            >
-                              {hasSubfolders ? (
-                                <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${isRootOpen ? "rotate-90" : ""}`} />
-                              ) : (
-                                <Folder className="h-3 w-3 shrink-0 text-slate-400" />
-                              )}
-                              <span className="truncate flex-1">{rootName}</span>
-                              {hasSubfolders && <span className="text-slate-300 tabular-nums text-[10px]">{folders.length}</span>}
-                            </button>
-                            {/* Expanded root в†’ show subfolders */}
-                            {isRootOpen && (
-                              <div className="ml-4 border-l border-slate-200 pl-2 my-0.5">
-                                {folders.map((folder) => {
-                                  const subPath = (folder.name || "").replace(new RegExp(`^${rootName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*/\\s*`), "");
-                                  const displayName = subPath || rootName;
-                                  const isSelected = selectedFolderIds.has(folder.id);
-                                  return (
-                                    <div key={folder.id} className="flex items-center gap-0.5 py-0.5">
-                                      <div onClick={(e) => e.stopPropagation()} className="shrink-0">
-                                        <Checkbox
-                                          checked={isSelected}
-                                          onCheckedChange={(checked) => {
-                                            setSelectedFolderIds((prev) => {
-                                              const next = new Set(prev);
-                                              if (checked) next.add(folder.id); else next.delete(folder.id);
-                                              return next;
-                                            });
-                                          }}
-                                          className="border-slate-300 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-500 h-3.5 w-3.5"
-                                        />
-                                      </div>
-                                      <button
-                                        type="button"
-                                        onClick={() => setSelectedFolderId(folder.id)}
-                                        className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono transition-all truncate max-w-[280px] ${
-                                          selectedFolderId === folder.id
-                                            ? "bg-blue-600/15 text-blue-600 border border-blue-500/40"
-                                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-                                        }`}
-                                        title={folder.name}
-                                      >
-                                        <Folder className="h-2.5 w-2.5 shrink-0" />
-                                        {displayName}
-                                      </button>
-                                      <DropdownMenu>
-                                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                          <Button variant="ghost" size="icon" className="h-5 w-5 text-slate-300 hover:text-slate-500 hover:bg-blue-500/10">
-                                            <ChevronDown className="h-2.5 w-2.5" />
-                                          </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end" className="border-slate-200 bg-white">
-                                          {FOLDER_CATEGORIES.map((moveCat) => (
-                                            <DropdownMenuItem
-                                              key={moveCat}
-                                              className={`font-mono text-xs ${(folder.category || "Projects") === moveCat ? "text-blue-600 font-bold" : "text-slate-600"} focus:bg-slate-100`}
-                                              onClick={async (e) => {
-                                                e.stopPropagation();
-                                                if ((folder.category || "Projects") === moveCat) return;
-                                                await onFolderCategoryUpdated?.(folder.id, moveCat);
-                                                toast({ title: "Category updated", description: `"${folder.name}" в†’ ${moveCat}` });
-                                              }}
-                                            >
-                                              {moveCat}
-                                            </DropdownMenuItem>
-                                          ))}
-                                          {onDeleteFolderAndContents && (
-                                            <>
-                                              <DropdownMenuSeparator />
-                                              <DropdownMenuItem
-                                                className="text-red-400 focus:text-red-300 focus:bg-red-500/20"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  setFolderToDelete({ id: folder.id, name: folder.name || "Folder" });
-                                                }}
-                                              >
-                                                <Trash2 className="h-3.5 w-3.5 mr-2" />
-                                                Delete folder & docs
-                                              </DropdownMenuItem>
-                                            </>
-                                          )}
-                                        </DropdownMenuContent>
-                                      </DropdownMenu>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
-              </div>
-            );
-          })()}
-          {/* Confirm delete folder and contents */}
-          <AlertDialog open={!!folderToDelete} onOpenChange={(open) => !open && setFolderToDelete(null)}>
-            <AlertDialogContent className="border border-slate-200/20 bg-white text-slate-900">
-              <AlertDialogHeader>
-                <AlertDialogTitle className="text-slate-900 font-mono">Delete folder and all its documents?</AlertDialogTitle>
-                <AlertDialogDescription className="text-slate-600 font-mono text-sm">
-                  This will permanently delete the folder &quot;{folderToDelete?.name}&quot; and all documents in it. Embeddings and links will be removed. This cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel className="bg-slate-50 text-slate-900 border-slate-200 hover:bg-slate-700">Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  className="bg-red-600 text-slate-900 hover:bg-red-700"
-                  onClick={async () => {
-                    if (!folderToDelete || !onDeleteFolderAndContents) return;
-                    setIsDeletingFolder(true);
-                    try {
-                      const result = await onDeleteFolderAndContents(folderToDelete.id);
-                      if ("error" in result) {
-                        toast({ title: "Failed to delete folder", description: result.error, variant: "destructive" });
-                      } else {
-                        toast({
-                          title: "Folder deleted",
-                          description: result.docCount > 0 ? `Deleted folder and ${result.docCount} document(s).` : "Folder deleted.",
-                        });
-                        setFolderToDelete(null);
-                      }
-                    } finally {
-                      setIsDeletingFolder(false);
-                    }
-                  }}
-                  disabled={isDeletingFolder}
-                >
-                  {isDeletingFolder ? "DeletingвЂ¦" : "Delete folder and documents"}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </CardContent>
-      </Card>
 
       <Card className="border border-slate-200 bg-white">
         <CardHeader className="border-b border-slate-200">
@@ -4905,68 +4513,6 @@ function SourcesTab({
               </p>
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      {/* в”Ђв”Ђ Company cards cleanup в”Ђв”Ђ */}
-      <Card className="border border-slate-200 bg-white">
-        <CardHeader className="border-b border-slate-200">
-          <CardTitle className="text-slate-900 font-mono font-black uppercase tracking-tight">
-            <Building2 className="h-5 w-5 inline mr-2 text-blue-600" />
-            Company cards
-          </CardTitle>
-          <CardDescription className="text-slate-500 font-mono">
-            Remove redundant or all entity cards. After sync, redundant cards (same company, little info) are cleaned automatically.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!activeEventId || isDeletingCards}
-            onClick={async () => {
-              const eventId = activeEventId || (await ensureActiveEventId());
-              if (!eventId) return;
-              setIsDeletingCards(true);
-              try {
-                const res = await deleteRedundantCards(eventId);
-                toast({ title: "Redundant cards removed", description: res.message });
-                await onRefreshCompanyCards?.();
-              } catch (e) {
-                toast({ title: "Cleanup failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
-              } finally {
-                setIsDeletingCards(false);
-              }
-            }}
-            className="border border-slate-200 bg-white text-slate-500 hover:bg-blue-500/10 font-mono text-[10px] h-8"
-          >
-            {isDeletingCards ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
-            Delete redundant cards
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!activeEventId || isDeletingCards}
-            onClick={async () => {
-              if (!confirm("Delete ALL entity cards for this workspace? Documents will be unlinked. This cannot be undone.")) return;
-              const eventId = activeEventId || (await ensureActiveEventId());
-              if (!eventId) return;
-              setIsDeletingCards(true);
-              try {
-                const res = await deleteAllCards(eventId);
-                toast({ title: "All cards deleted", description: res.message });
-                await onRefreshCompanyCards?.();
-              } catch (e) {
-                toast({ title: "Delete failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
-              } finally {
-                setIsDeletingCards(false);
-              }
-            }}
-            className="border border-red-500/50 bg-white text-red-400 hover:bg-red-500/10 font-mono text-[10px] h-8"
-          >
-            {isDeletingCards ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
-            Delete all cards
-          </Button>
         </CardContent>
       </Card>
 
@@ -7890,28 +7436,29 @@ export default function Dashboard() {
     }
   }, [profile?.role, activeTab]);
 
-  // Keep folder scopes in sync with source folders for Knowledge Scope
+  // Fetch company context when Account tab is open (for editable company name/description)
   useEffect(() => {
-    setScopes((prev) => {
-      const nonFolderScopes = prev.filter((scope) => scope.type !== "folder");
-      const existingFolderChecks = new Map(
-        prev
-          .filter((scope) => scope.type === "folder")
-          .map((scope) => [scope.id, scope.checked])
-      );
-      const folderScopes = sourceFolders.map((folder) => {
-        const scopeId = `folder:${folder.id}`;
-        return {
-          id: scopeId,
-          label: folder.name,
-          checked: existingFolderChecks.get(scopeId) ?? false,
-          type: "folder" as const,
-          category: (folder.category || "Projects") as string,
-        };
+    if (activeTab !== "account" || !profile?.organization_id) return;
+    let cancelled = false;
+    setCompanyAccountLoading(true);
+    getCompanyContext(profile.organization_id)
+      .then((ctx) => {
+        if (!cancelled) {
+          setCompanyAccountName(ctx.company_name ?? "");
+          setCompanyAccountDescription(ctx.company_description ?? "");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCompanyAccountName("");
+          setCompanyAccountDescription("");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCompanyAccountLoading(false);
       });
-      return [...nonFolderScopes, ...folderScopes];
-    });
-  }, [sourceFolders]);
+    return () => { cancelled = true; };
+  }, [activeTab, profile?.organization_id]);
 
   // Normalize folder/root name for matching: trim, lower, strip parentheticals, collapse spaces.
   const normalizeFolderMatch = useCallback((s: string): string => {
@@ -13552,166 +13099,6 @@ export default function Dashboard() {
                       </label>
                     ))}
                   </div>
-                  {/* Folder scopes вЂ” grouped by category (show all: Projects, Partners, BD, Mentors/Corporates, etc.) */}
-                  {(() => {
-                    const folderScopes = scopes.filter((s) => s.type === "folder");
-
-                    // Group by category
-                    const catGroups = new Map<string, ScopeItem[]>();
-                    for (const fs of folderScopes) {
-                      const cat = fs.category || "Projects";
-                      if (!catGroups.has(cat)) catGroups.set(cat, []);
-                      catGroups.get(cat)!.push(fs);
-                    }
-
-                    const orderedCats = [...FOLDER_CATEGORIES, ...Array.from(catGroups.keys()).filter((c) => !FOLDER_CATEGORIES.includes(c as any))];
-
-                    return orderedCats.map((catName) => {
-                      const catItems = catGroups.get(catName) ?? [];
-                      const catAllChecked = catItems.length > 0 && catItems.every((i) => i.checked);
-                      const catSomeChecked = catItems.some((i) => i.checked);
-                      const isCatExpanded = expandedScopeGroups.has(`cat:${catName}`);
-
-                      // Sub-group by company name (before first " / ")
-                      const companyGroups = new Map<string, ScopeItem[]>();
-                      for (const fs of catItems) {
-                        const sepIdx = fs.label.indexOf(" / ");
-                        const groupName = sepIdx > 0 ? fs.label.slice(0, sepIdx).trim() : fs.label.trim();
-                        if (!companyGroups.has(groupName)) companyGroups.set(groupName, []);
-                        companyGroups.get(groupName)!.push(fs);
-                      }
-
-                      return (
-                        <div key={catName} className="flex flex-col mt-1">
-                          {/* Category header */}
-                          <div
-                            className="flex items-center gap-1 cursor-pointer group"
-                            onClick={() => {
-                              setExpandedScopeGroups((prev) => {
-                                const next = new Set(prev);
-                                const key = `cat:${catName}`;
-                                if (next.has(key)) next.delete(key); else next.add(key);
-                                return next;
-                              });
-                            }}
-                          >
-                            <Checkbox
-                              checked={catAllChecked}
-                              onCheckedChange={(val) => {
-                                const checked = val === true;
-                                setScopes((prev) =>
-                                  prev.map((s) =>
-                                    catItems.some((i) => i.id === s.id) ? { ...s, checked } : s
-                                  )
-                                );
-                              }}
-                              className="h-2.5 w-2.5 border-slate-300 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-500 shrink-0"
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                            <span className={`text-[9px] font-mono uppercase tracking-wider ${catSomeChecked ? "text-blue-600/70" : "text-slate-400"} group-hover:text-blue-600/80`}>
-                              {catName}
-                            </span>
-                            <span className="text-[8px] text-slate-300">({catItems.length})</span>
-                            <span className="ml-auto shrink-0 text-slate-300 group-hover:text-blue-600/60">
-                              {isCatExpanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
-                            </span>
-                          </div>
-
-                          {/* Expanded company groups inside this category (or empty state) */}
-                          {isCatExpanded && (
-                            <div className="ml-2 mt-0.5 flex flex-col gap-0.5 border-l border-slate-200 pl-1.5">
-                              {catItems.length === 0 ? (
-                                <span className="text-[9px] font-mono text-slate-400">No folders in this category. Add folders in Sources в†’ Document Folders.</span>
-                              ) : null}
-                              {Array.from(companyGroups.entries()).map(([groupName, items]) => {
-                                const allChecked = items.every((i) => i.checked);
-                                const someChecked = items.some((i) => i.checked);
-                                const isExpanded = expandedScopeGroups.has(groupName);
-                                const hasSubfolders = items.length > 1 || (items.length === 1 && items[0].label.includes(" / "));
-                                return (
-                                  <div key={groupName} className="flex flex-col">
-                                    <div
-                                      className={`flex items-center gap-1 text-[10px] border px-1.5 py-0.5 rounded cursor-pointer transition-all font-mono ${
-                                        allChecked
-                                          ? "border-blue-500/50 bg-blue-600/10 text-blue-600"
-                                          : someChecked
-                                            ? "border-blue-500/30 bg-blue-600/5 text-blue-600/80"
-                                            : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-600"
-                                      }`}
-                                    >
-                                      <Checkbox
-                                        checked={allChecked}
-                                        onCheckedChange={(val) => {
-                                          const checked = val === true;
-                                          setScopes((prev) =>
-                                            prev.map((s) =>
-                                              items.some((i) => i.id === s.id) ? { ...s, checked } : s
-                                            )
-                                          );
-                                        }}
-                                        className="h-2.5 w-2.5 border-slate-300 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-500 shrink-0"
-                                      />
-                                      <Folder className="h-2.5 w-2.5 shrink-0" />
-                                      <span className="truncate flex-1" onClick={() => {
-                                        const checked = !allChecked;
-                                        setScopes((prev) =>
-                                          prev.map((s) =>
-                                            items.some((i) => i.id === s.id) ? { ...s, checked } : s
-                                          )
-                                        );
-                                      }}>{groupName}</span>
-                                      {someChecked && <span className="text-[8px] text-blue-600/60 shrink-0">{items.filter(i => i.checked).length}/{items.length}</span>}
-                                      {hasSubfolders && (
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setExpandedScopeGroups((prev) => {
-                                              const next = new Set(prev);
-                                              if (next.has(groupName)) next.delete(groupName);
-                                              else next.add(groupName);
-                                              return next;
-                                            });
-                                          }}
-                                          className="p-0 shrink-0 text-slate-400 hover:text-blue-600"
-                                        >
-                                          {isExpanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
-                                        </button>
-                                      )}
-                                    </div>
-                                    {isExpanded && hasSubfolders && (
-                                      <div className="ml-3 mt-0.5 flex flex-col gap-0.5 border-l border-slate-200 pl-1.5">
-                                        {items.map((sub) => {
-                                          const subLabel = sub.label.includes(" / ") ? sub.label.slice(sub.label.indexOf(" / ") + 3) : sub.label;
-                                          return (
-                                            <label
-                                              key={sub.id}
-                                              className={`inline-flex items-center gap-1 text-[9px] border px-1 py-0.5 rounded cursor-pointer transition-all font-mono max-w-full min-w-0 ${
-                                                sub.checked
-                                                  ? "border-blue-500/40 bg-blue-600/5 text-blue-600/90"
-                                                  : "border-slate-200 bg-white text-slate-400 hover:border-slate-300 hover:text-slate-500"
-                                              }`}
-                                            >
-                                              <Checkbox
-                                                checked={sub.checked}
-                                                onCheckedChange={(val) => toggleScope(sub.id, val === true)}
-                                                className="h-2 w-2 border-slate-300 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-500 shrink-0"
-                                              />
-                                              <span className="truncate">{subLabel}</span>
-                                            </label>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    });
-                  })()}
                 </div>
               </div>
 
@@ -14226,8 +13613,64 @@ export default function Dashboard() {
                       {profile?.organization_id && (
                         <div className="flex items-center justify-between py-3 border-b border-slate-200">
                           <span className="text-sm text-slate-400 font-mono uppercase tracking-wider">Organization</span>
-                          <span className="text-xs text-slate-500 font-mono">{profile.organization_id.slice(0, 8)}вЂ¦</span>
+                          <span className="text-xs text-slate-500 font-mono">{profile.organization_id.slice(0, 8)}…</span>
                         </div>
+                      )}
+                      {profile?.organization_id && (
+                        <>
+                          <div className="space-y-2 py-3 border-b border-slate-200">
+                            <Label className="text-sm text-slate-400 font-mono uppercase tracking-wider">Company name</Label>
+                            {companyAccountLoading ? (
+                              <div className="flex items-center gap-2 text-slate-500 text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
+                            ) : (
+                              <Input
+                                value={companyAccountName}
+                                onChange={(e) => setCompanyAccountName(e.target.value)}
+                                placeholder="Your company name"
+                                className="bg-white border-slate-200"
+                              />
+                            )}
+                          </div>
+                          <div className="space-y-2 py-3 border-b border-slate-200">
+                            <Label className="text-sm text-slate-400 font-mono uppercase tracking-wider">Company description</Label>
+                            {companyAccountLoading ? null : (
+                              <Textarea
+                                value={companyAccountDescription}
+                                onChange={(e) => setCompanyAccountDescription(e.target.value)}
+                                placeholder="Brief description of your company (used by AI context)"
+                                rows={4}
+                                className="bg-white border-slate-200 resize-none"
+                              />
+                            )}
+                          </div>
+                          {!companyAccountLoading && (
+                            <div className="flex items-center gap-3 pt-2">
+                              <Button
+                                onClick={async () => {
+                                  if (!profile?.organization_id) return;
+                                  setCompanyAccountSaving(true);
+                                  try {
+                                    await setupCompany({
+                                      organizationId: profile.organization_id,
+                                      companyName: companyAccountName.trim() || undefined,
+                                      companyDescription: companyAccountDescription.trim(),
+                                    });
+                                    toast({ title: "Saved", description: "Company details updated." });
+                                  } catch (e) {
+                                    toast({ title: "Failed to save", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+                                  } finally {
+                                    setCompanyAccountSaving(false);
+                                  }
+                                }}
+                                disabled={companyAccountSaving}
+                                className="bg-blue-600 hover:bg-blue-700 text-white"
+                              >
+                                {companyAccountSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                                Save company details
+                              </Button>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                     <div className="flex items-center gap-3 pt-4">
