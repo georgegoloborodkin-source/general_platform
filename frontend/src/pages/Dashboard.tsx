@@ -4017,8 +4017,86 @@ function SourcesTab({
           </CardContent>
         </Card>
       )}
-      {/* ClickUp import temporarily disabled */}
 
+      {/* Create a folder — for both local uploads and Google Drive */}
+      <Card className="border border-slate-200 bg-white">
+        <CardHeader className="border-b border-slate-200">
+          <CardTitle className="text-slate-900 font-mono font-black uppercase tracking-tight flex items-center gap-2">
+            <FolderPlus className="h-5 w-5 text-blue-600" />
+            Create a folder
+          </CardTitle>
+          <CardDescription className="text-slate-500 font-mono">
+            Add a folder for local uploads or Google Drive. Same folders work for both — create once, then upload files or connect a Drive folder to it.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 pt-4">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex-1 min-w-[160px]">
+              <Label className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1 block">Folder name</Label>
+              <Input
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                placeholder="e.g. Q1 Deals, Due Diligence"
+                className="border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 text-sm h-9"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (newFolderName.trim()) {
+                      (async () => {
+                        setIsCreatingFolder(true);
+                        try {
+                          const folder = await onCreateFolder(newFolderName.trim(), newFolderCategory);
+                          if (folder) {
+                            toast({ title: "Folder created", description: `"${folder.name}" is ready for uploads and Drive.` });
+                            setNewFolderName("");
+                          }
+                        } finally {
+                          setIsCreatingFolder(false);
+                        }
+                      })();
+                    }
+                  }
+                }}
+              />
+            </div>
+            <div className="w-[140px]">
+              <Label className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1 block">Category</Label>
+              <Select value={newFolderCategory} onValueChange={setNewFolderCategory}>
+                <SelectTrigger className="h-9 border border-slate-200 bg-white text-slate-900 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-white border border-slate-200">
+                  {FOLDER_CATEGORIES.map((cat) => (
+                    <SelectItem key={cat} value={cat} className="text-slate-900 font-mono text-sm">
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              disabled={!newFolderName.trim() || isCreatingFolder}
+              onClick={async () => {
+                if (!newFolderName.trim()) return;
+                setIsCreatingFolder(true);
+                try {
+                  const folder = await onCreateFolder(newFolderName.trim(), newFolderCategory);
+                  if (folder) {
+                    toast({ title: "Folder created", description: `"${folder.name}" is ready for uploads and Drive.` });
+                    setNewFolderName("");
+                  }
+                } finally {
+                  setIsCreatingFolder(false);
+                }
+              }}
+              className="bg-blue-600 text-slate-900 hover:bg-blue-600/80 font-bold h-9 px-4"
+            >
+              {isCreatingFolder ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
+              Create folder
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="border border-slate-200 bg-white">
         <CardHeader className="border-b border-slate-200">
@@ -4071,7 +4149,7 @@ function SourcesTab({
             </div>
           )}
           <p className="text-xs text-slate-500 font-mono">
-            Supported: PDF, Word (.docx), Excel (.xlsx, .xls), Text (.txt, .md, .csv, .json) вЂ” all are indexed for AI search.
+            Supported: PDF, Word (.docx), Excel (.xlsx, .xls), Text (.txt, .md, .csv, .json). All are indexed for AI search.
           </p>
         </CardContent>
       </Card>
@@ -4631,7 +4709,7 @@ function SourcesTab({
             {/* Step 1: Category selector */}
             <div>
               <Label className="text-[10px] font-mono text-blue-600/80 uppercase tracking-wider mb-1.5 block">
-                Step 1 вЂ” Choose Category
+                Step 1 — Choose category
               </Label>
               <div className="flex flex-wrap gap-2">
                 {FOLDER_CATEGORIES.map((cat) => {
@@ -4657,7 +4735,7 @@ function SourcesTab({
             {/* Step 2: Folder selection */}
             <div>
               <Label className="text-[10px] font-mono text-blue-600/80 uppercase tracking-wider mb-1.5 block">
-                Step 2 вЂ” Select or Create Folder
+                Step 2 — Select or create folder
               </Label>
 
               {/* Quick create inside dialog */}
@@ -4808,7 +4886,7 @@ function SourcesTab({
               Categorize Folders
             </DialogTitle>
             <DialogDescription className="text-slate-500 font-mono text-xs">
-              Assign each folder to a category: Sourcing, Projects, Partners, BD, or Mentors/Corporates.
+              Assign each folder to a category.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 max-h-[400px] overflow-y-auto">
