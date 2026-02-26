@@ -8606,17 +8606,20 @@ export default function Dashboard() {
     loadDecisions();
     return () => {
       cancelled = true;
-      if (documentsChannel) {
-        supabase.removeChannel(documentsChannel);
-      }
-      if (decisionsChannel) {
-        supabase.removeChannel(decisionsChannel);
-      }
-      if (sourcesChannel) {
-        supabase.removeChannel(sourcesChannel);
-      }
+      // Small delay before removing channels so WebSocket has time to establish (avoids "closed before connection")
+      const ch1 = documentsChannel;
+      const ch2 = decisionsChannel;
+      const ch3 = sourcesChannel;
+      documentsChannel = null;
+      decisionsChannel = null;
+      sourcesChannel = null;
+      setTimeout(() => {
+        if (ch1) supabase.removeChannel(ch1);
+        if (ch2) supabase.removeChannel(ch2);
+        if (ch3) supabase.removeChannel(ch3);
+      }, 300);
     };
-  }, [profile, toast]);
+  }, [profile?.id, profile?.organization_id]);
 
   const buildSnippet = useCallback((text: string | null) => {
     if (!text) return "No preview available.";
