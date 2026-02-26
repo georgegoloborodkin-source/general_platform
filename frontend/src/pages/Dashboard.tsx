@@ -4035,7 +4035,7 @@ function SourcesTab({
                       (async () => {
                         setIsCreatingFolder(true);
                         try {
-                          const folder = await onCreateFolder(newFolderName.trim(), newFolderCategory);
+                          const folder = await onCreateFolder(newFolderName.trim(), "Projects");
                           if (folder) {
                             toast({ title: "Folder created", description: `"${folder.name}" is ready for uploads and Drive.` });
                             setNewFolderName("");
@@ -4049,28 +4049,13 @@ function SourcesTab({
                 }}
               />
             </div>
-            <div className="w-[140px]">
-              <Label className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1 block">Category</Label>
-              <Select value={newFolderCategory} onValueChange={setNewFolderCategory}>
-                <SelectTrigger className="h-9 border border-slate-200 bg-white text-slate-900 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-white border border-slate-200">
-                  {FOLDER_CATEGORIES.map((cat) => (
-                    <SelectItem key={cat} value={cat} className="text-slate-900 font-mono text-sm">
-                      {cat}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             <Button
               disabled={!newFolderName.trim() || isCreatingFolder}
               onClick={async () => {
                 if (!newFolderName.trim()) return;
                 setIsCreatingFolder(true);
                 try {
-                  const folder = await onCreateFolder(newFolderName.trim(), newFolderCategory);
+                  const folder = await onCreateFolder(newFolderName.trim(), "Projects");
                   if (folder) {
                     toast({ title: "Folder created", description: `"${folder.name}" is ready for uploads and Drive.` });
                     setNewFolderName("");
@@ -4671,36 +4656,10 @@ function SourcesTab({
               ))}
             </div>
 
-            {/* Step 1: Category selector */}
+            {/* Select or create folder */}
             <div>
               <Label className="text-[10px] font-mono text-blue-600/80 uppercase tracking-wider mb-1.5 block">
-                Step 1 — Choose category
-              </Label>
-              <div className="flex flex-wrap gap-2">
-                {FOLDER_CATEGORIES.map((cat) => {
-                  const isActive = folderDialogCategory === cat;
-                  return (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => setFolderDialogCategory(cat)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-mono border-2 transition-all ${
-                        isActive
-                          ? "border-blue-500 bg-blue-600/15 text-blue-600 font-bold shadow-[0_0_8px_rgba(59,130,246,0.25)]"
-                          : "border-slate-300 text-slate-500 hover:border-slate-200/60 hover:text-slate-900"
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Step 2: Folder selection */}
-            <div>
-              <Label className="text-[10px] font-mono text-blue-600/80 uppercase tracking-wider mb-1.5 block">
-                Step 2 — Select or create folder
+                Select or create folder
               </Label>
 
               {/* Quick create inside dialog */}
@@ -4708,17 +4667,17 @@ function SourcesTab({
                 <Input
                   value={folderDialogNewName}
                   onChange={(e) => setFolderDialogNewName(e.target.value)}
-                  placeholder={`New folder name (${folderDialogCategory})`}
+                  placeholder="New folder name"
                   className="flex-1 border border-slate-300 bg-white text-slate-900 text-xs placeholder:text-slate-400 h-8"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && folderDialogNewName.trim()) {
                       e.preventDefault();
                       (async () => {
-                        const folder = await onCreateFolder(folderDialogNewName.trim(), folderDialogCategory);
+                        const folder = await onCreateFolder(folderDialogNewName.trim(), "Projects");
                         if (folder) {
                           setFolderDialogNewName("");
                           setFolderAssignmentIds([folder.id]);
-                          toast({ title: "Folder created", description: `"${folder.name}" in ${folderDialogCategory}` });
+                          toast({ title: "Folder created", description: `"${folder.name}" created.` });
                         }
                       })();
                     }
@@ -4730,11 +4689,11 @@ function SourcesTab({
                   className="bg-blue-600 text-slate-900 hover:bg-blue-600/80 font-bold h-8 text-xs px-3"
                   onClick={async () => {
                     if (!folderDialogNewName.trim()) return;
-                    const folder = await onCreateFolder(folderDialogNewName.trim(), folderDialogCategory);
+                    const folder = await onCreateFolder(folderDialogNewName.trim(), "Projects");
                     if (folder) {
                       setFolderDialogNewName("");
                       setFolderAssignmentIds([folder.id]);
-                      toast({ title: "Folder created", description: `"${folder.name}" in ${folderDialogCategory}` });
+                      toast({ title: "Folder created", description: `"${folder.name}" created.` });
                     }
                   }}
                 >
@@ -4749,7 +4708,7 @@ function SourcesTab({
                 if (catFolders.length === 0) {
                   return (
                     <div className="text-xs text-slate-400 font-mono border border-slate-200/15 rounded-md p-3 text-center">
-                      No folders in &ldquo;{folderDialogCategory}&rdquo; yet. Create one above.
+                      No folders yet. Create one above.
                     </div>
                   );
                 }
@@ -4772,42 +4731,6 @@ function SourcesTab({
                   </div>
                 );
               })()}
-
-              {/* Show other categories' folders collapsed */}
-              {sourceFolders.filter((f) => (f.category || "Projects") !== folderDialogCategory).length > 0 && (
-                <details className="mt-2">
-                  <summary className="text-[10px] font-mono text-slate-400 cursor-pointer hover:text-slate-500">
-                    Show other categories
-                  </summary>
-                  <div className="space-y-2 mt-2">
-                    {FOLDER_CATEGORIES.filter((c) => c !== folderDialogCategory).map((cat) => {
-                      const catFolders = sourceFolders.filter((f) => (f.category || "Projects") === cat);
-                      if (catFolders.length === 0) return null;
-                      return (
-                        <div key={cat}>
-                          <p className="text-[10px] font-mono text-slate-400 uppercase tracking-wider mb-1">{cat}</p>
-                          <div className="space-y-1">
-                            {catFolders.map((folder) => (
-                              <label
-                                key={folder.id}
-                                className="flex items-center gap-2 text-xs border border-slate-200 px-2 py-1.5 rounded-md cursor-pointer hover:bg-blue-600/5 hover:border-blue-500 transition-colors text-slate-500 font-mono"
-                              >
-                                <Checkbox
-                                  checked={folderAssignmentIds.includes(folder.id)}
-                                  onCheckedChange={(val) => toggleFolderAssignment(folder.id, val === true)}
-                                  className="border-slate-300 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-500"
-                                />
-                                <Folder className="h-3 w-3 text-slate-400" />
-                                <span className="flex-1">{folder.name}</span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </details>
-              )}
             </div>
           </div>
           <div className="flex items-center justify-end gap-2 pt-2">
