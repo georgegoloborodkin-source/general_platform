@@ -9395,6 +9395,8 @@ export default function Dashboard() {
                 // Contextual enrichment failed or timed out вЂ” embed raw chunk (still works, just less precise)
                 // This is non-fatal and shouldn't block the upload
                 contextualSkipped++;
+                const firstLine = pair.childText.trim().split(/\n/)[0]?.trim().slice(0, 100) || pair.childText.trim().slice(0, 100);
+                if (firstLine) contextualHeader = `${title}: Chunk ${i + 1}/${pairs.length}. ${firstLine}`;
               }
 
               // Generate embedding with timeout
@@ -9423,8 +9425,7 @@ export default function Dashboard() {
                 parent_index: pair.parentIndex,
                 child_index: pair.childIndex,
                 embedding,
-                // Store the contextual header for later retrieval debugging
-                ...(contextualHeader ? { contextual_header: contextualHeader } : {}),
+                contextual_header: contextualHeader || null,
               });
               if (error) {
                 // If contextual_header column doesn't exist yet, retry without it

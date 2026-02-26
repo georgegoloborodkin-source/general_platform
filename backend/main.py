@@ -3062,24 +3062,31 @@ async def extract_text_content(file: UploadFile) -> Tuple[str, str]:
                     excel_file = BytesIO(content)
                     workbook = openpyxl.load_workbook(excel_file, data_only=True)
                     text_content = ""
-                    
-                    # Get the first sheet
-                    sheet = workbook.active
-                    
-                    # Extract headers
-                    if sheet.max_row > 0:
-                        headers = []
-                        for cell in sheet[1]:
-                            headers.append(str(cell.value) if cell.value else "")
-                        text_content += ",".join(headers) + "\n"
-                        
-                        # Extract data rows
-                        for row in sheet.iter_rows(min_row=2, values_only=False):
-                            row_data = []
-                            for cell in row:
-                                row_data.append(str(cell.value) if cell.value else "")
-                            text_content += ",".join(row_data) + "\n"
-                    
+
+                    def _cell_str(val) -> str:
+                        if val is None:
+                            return ""
+                        if hasattr(val, "isoformat"):  # datetime/date
+                            return val.isoformat()
+                        return str(val).strip()
+
+                    # Extract all sheets so content is never empty when any sheet has data
+                    for sheet_name in workbook.sheetnames:
+                        sheet = workbook[sheet_name]
+                        if sheet.max_row == 0 and sheet.max_column == 0:
+                            continue
+                        text_content += f"\n--- Sheet: {sheet_name} ---\n"
+                        # Headers (first row)
+                        if sheet.max_row > 0:
+                            first_row = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), None)
+                            if first_row:
+                                text_content += ",".join(_cell_str(v) for v in first_row) + "\n"
+                            # Data rows
+                            for row in sheet.iter_rows(min_row=2, values_only=True):
+                                if row is None:
+                                    continue
+                                text_content += ",".join(_cell_str(v) for v in row) + "\n"
+
                     if not text_content.strip():
                         raise HTTPException(status_code=400, detail="Excel file appears to be empty.")
                 except ImportError:
@@ -4061,9 +4068,18 @@ def build_investor_csv(investors: List[InvestorData]) -> str:
 
 @app.post("/convert-file")
 async def convert_file(file: UploadFile = File(...), dataType: Optional[str] = None):
-    """Convert uploaded file (CSV, text, PDF, etc.)"""
+    """Convert uploaded file (CSV, text, PDF, XLSX, etc.). Always returns raw_content when text was extracted."""
+    file_ext = ""
+    text_content = ""
     try:
         file_ext, text_content = await extract_text_content(file)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to extract text from file: {str(e)}")
+
+    # Try structured conversion (startups/investors/mentors/corporates)
+    try:
         request = ConversionRequest(
             data=text_content,
             dataType=dataType,
@@ -4075,7 +4091,7 @@ async def convert_file(file: UploadFile = File(...), dataType: Optional[str] = N
 
         # Validate critical identifiers, but don't hard-fail if optional fields are missing.
         row_errors = validate_structured_rows(
-            conversion_result.startups, 
+            conversion_result.startups,
             conversion_result.investors,
             conversion_result.mentors,
             conversion_result.corporates
@@ -4083,16 +4099,15 @@ async def convert_file(file: UploadFile = File(...), dataType: Optional[str] = N
 
         # Block only if nothing was extracted
         has_any_data = (
-            conversion_result.startups or 
-            conversion_result.investors or 
-            conversion_result.mentors or 
+            conversion_result.startups or
+            conversion_result.investors or
+            conversion_result.mentors or
             conversion_result.corporates
         )
         if not has_any_data:
-            # Return a 200 with errors so the frontend can show a meaningful message
-            # (instead of a generic HTTP failure that hides conversion_result.errors).
+            # Still return 200 with raw_content so the document can be indexed; add a warning
             conversion_result.errors = (conversion_result.errors or []) + [
-                "No valid data extracted. Please check the input format and column names. Expected columns for Investors: firmName, memberName, geoFocus, industryPreferences, stagePreferences. For Mentors: fullName, email, geoFocus. For Corporates: firmName, contactName, geoFocus, partnershipTypes."
+                "No valid structured data extracted. Document text was extracted and will be searchable."
             ]
             return conversion_result
 
@@ -4104,7 +4119,19 @@ async def convert_file(file: UploadFile = File(...), dataType: Optional[str] = N
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"File conversion failed: {str(e)}")
+        # Structured conversion failed (e.g. Claude timeout), but we have extracted text.
+        # Return raw_content so the frontend can store it and index for search.
+        return ConversionResponse(
+            startups=[],
+            investors=[],
+            mentors=[],
+            corporates=[],
+            detectedType=file_ext or "file",
+            confidence=0.0,
+            warnings=[],
+            errors=[f"Structured conversion failed: {str(e)}. Document text was extracted and will be searchable."],
+            raw_content=text_content[:MAX_MODEL_INPUT_CHARS],
+        )
 
 def parse_google_drive_url(url: str) -> Tuple[str, str]:
     patterns = [
@@ -6760,6 +6787,17 @@ class ContextualChunkResponse(BaseModel):
     contextual_header: str
 
 
+def _fallback_contextual_header(chunk_text: str, document_title: str, chunk_index: int, total_chunks: int) -> str:
+    """When Claude is unavailable or returns empty, build a minimal header from chunk and title."""
+    if not chunk_text or not chunk_text.strip():
+        return ""
+    first_line = chunk_text.strip().split("\n")[0].strip()[:120]
+    if not first_line:
+        first_line = chunk_text.strip()[:120]
+    title_part = f"{document_title}: " if document_title and document_title.strip() else ""
+    return f"{title_part}Chunk {chunk_index + 1}/{total_chunks}. {first_line}"
+
+
 @app.post("/contextualize-chunk", response_model=ContextualChunkResponse)
 async def contextualize_chunk(request: ContextualChunkRequest):
     """
@@ -6768,10 +6806,16 @@ async def contextualize_chunk(request: ContextualChunkRequest):
     This dramatically improves embedding hit rates (per Anthropic's Contextual Retrieval paper).
 
     Call this endpoint for each chunk *before* embedding it.
+    Always returns a non-empty contextual_header when chunk_text is non-empty (Claude or fallback).
     """
+    chunk_text = (request.chunk_text or "").strip()
+    fallback = _fallback_contextual_header(
+        chunk_text, request.document_title or "", request.chunk_index, request.total_chunks or 1
+    )
+
     if not ANTHROPIC_API_KEY:
-        # No Claude — return the chunk as-is
-        return ContextualChunkResponse(enriched_chunk=request.chunk_text, contextual_header="")
+        enriched = f"{fallback}\n\n{chunk_text}" if fallback else chunk_text
+        return ContextualChunkResponse(enriched_chunk=enriched, contextual_header=fallback)
 
     prompt = (
         f"Document title: {request.document_title}\n"
@@ -6797,10 +6841,12 @@ async def contextualize_chunk(request: ContextualChunkRequest):
             )
             header = "".join(b.text for b in message.content if hasattr(b, "text")).strip()
         else:
-            header = ""
-    except Exception as e:
-        header = ""
+            header = fallback
+    except Exception:
+        header = fallback
 
+    if not header:
+        header = fallback
     enriched = f"{header}\n\n{request.chunk_text}" if header else request.chunk_text
     return ContextualChunkResponse(enriched_chunk=enriched, contextual_header=header)
 
