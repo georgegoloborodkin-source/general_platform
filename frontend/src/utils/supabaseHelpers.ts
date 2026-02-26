@@ -238,24 +238,17 @@ export async function ensureDefaultFoldersForEvent(eventId: string): Promise<voi
   const { error } = await supabase.rpc("ensure_default_folders_for_event", {
     p_event_id: eventId,
   });
+  // Orbit platform: no default folders (Sourcing, Deals, etc.); only user-created folders.
+  // If RPC fails or returns, we do not create any fallback folders.
   if (error) {
-    const defaultFolders: { name: string; category: string }[] = [
-      { name: 'Companies', category: 'Companies' },
-      { name: 'Partners', category: 'Partners' },
-      { name: 'Deals', category: 'Sourcing' },
-      { name: 'Market Research', category: 'Sourcing' },
-      { name: 'Due Diligence', category: 'Companies' },
-      { name: 'BD', category: 'BD' },
-    ];
-
+    const defaultFolders: { name: string; category: string }[] = [];
+    if (defaultFolders.length === 0) return;
     const { data: existingFolders } = await supabase
       .from("source_folders")
       .select("name")
       .eq("event_id", eventId);
-
     const existingNames = new Set((existingFolders || []).map((f: any) => f.name.toLowerCase()));
     const foldersToCreate = defaultFolders.filter(d => !existingNames.has(d.name.toLowerCase()));
-
     if (foldersToCreate.length > 0) {
       const { data: { user } } = await supabase.auth.getUser();
       await supabase
@@ -339,6 +332,15 @@ export async function deleteFolderAndContents(folderId: string): Promise<{ docCo
   }
 
   return { docCount };
+}
+
+/**
+ * Delete a document from Supabase (and its folder links + embeddings via CASCADE).
+ */
+export async function deleteDocument(documentId: string): Promise<{ error?: string }> {
+  const { error } = await supabase.from("documents").delete().eq("id", documentId);
+  if (error) return { error: error.message };
+  return {};
 }
 
 // Company Connections helpers
@@ -425,12 +427,8 @@ export async function getCompanyCardById(companyEntityId: string, eventId: strin
 }
 
 export async function updateCompanyCardProperties(entityId: string, newProperties: Record<string, any>) {
-  const { error } = await supabase
-    .rpc("update_company_card_properties", {
-      p_entity_id: entityId,
-      p_new_properties: newProperties,
-    } as any);
-  return { error };
+  // Orbit platform: company cards RPC not in schema; no-op to avoid 404
+  return { error: null };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -699,58 +697,15 @@ export interface KpiRetrievalResult {
 
 /**
  * Retrieve structured KPIs/metrics from the company_kpis table.
- * Searches by company name and/or metric name.
+ * Orbit platform: company_kpis table not in schema; return empty to avoid 404.
  */
 export async function retrieveKpiContext(
   eventId: string,
   companyNames?: string[],
   metricNames?: string[],
 ): Promise<KpiRetrievalResult> {
-  const kpis: KpiRetrievalResult["kpis"] = [];
-
-  try {
-    let query = supabase
-      .from("company_kpis")
-      .select("company_name, metric_name, value, unit, period, metric_category, confidence")
-      .eq("event_id", eventId);
-
-    // Filter by company names if provided
-    if (companyNames && companyNames.length > 0) {
-      const filters = companyNames.map((n) => `company_name.ilike.%${n}%`).join(",");
-      query = query.or(filters);
-    }
-
-    // Filter by metric names if provided
-    if (metricNames && metricNames.length > 0) {
-      const filters = metricNames.map((m) => `metric_name.ilike.%${m}%`).join(",");
-      query = query.or(filters);
-    }
-
-    const { data } = await query.order("period", { ascending: false }).limit(50);
-
-    if (data) {
-      for (const row of data as any[]) {
-        kpis.push({
-          company: row.company_name,
-          metric: row.metric_name,
-          value: row.value,
-          unit: row.unit || "",
-          period: row.period || "",
-          category: row.metric_category || "",
-          confidence: row.confidence || 0,
-        });
-      }
-    }
-  } catch (err) {
-    console.error("[KpiRetrieval] Error:", err);
-  }
-
-  // Build summary
-  const summary = kpis.length > 0
-    ? kpis.map((k) => `${k.company}: ${k.metric} = ${k.value} ${k.unit} (${k.period})`).join("\n")
-    : "No KPI data found.";
-
-  return { kpis, summary };
+  // Orbit platform: no company_kpis table; return empty
+  return { kpis: [], summary: "No KPI data found." };
 }
 
 /**
@@ -770,125 +725,8 @@ export async function mergeCompanyCardFromExtraction(
   sourceDocumentId: string,
   options?: { overwriteExisting?: boolean; isMeetingNotes?: boolean }
 ): Promise<MergeResult> {
-  const entity = await getEntityProperties(entityId);
-  if (!entity) {
-    return { updated: [], skipped: [], conflicts: [], entityId, companyName: "" };
-  }
-
-  const current = entity.properties;
-  const editedFields: string[] = current._edited_fields || [];
-  const propertySources: Record<string, any> = current._property_sources || {};
-  const propertyConflicts: any[] = current._property_conflicts || [];
-
-  const updated: string[] = [];
-  const skipped: string[] = [];
-  const conflicts: PropertyConflict[] = [];
-  const mergedProps: Record<string, any> = {};
-  let removedConflicts = false;
-
-  // Fields that are internal metadata — skip them
-  const metaFields = new Set([
-    "_edited_fields", "_property_sources", "_property_conflicts",
-    "auto_created", "source", "first_seen_document", "last_seen_document", "document_count",
-  ]);
-
-  // Meeting-note–specific fields: always overwrite with latest when source is meeting notes
-  const MEETING_OVERWRITE_FIELDS = new Set([
-    "meeting_summary", "last_meeting", "next_steps", "concerns",
-    "decision", "meeting_notes", "action_items", "key_decisions",
-    "last_meeting_date", "meeting_date",
-  ]);
-
-  for (const [field, newValue] of Object.entries(extractedProps)) {
-    if (metaFields.has(field)) continue;
-
-    // Skip if no meaningful value extracted
-    if (newValue === "" || newValue === null || newValue === undefined) continue;
-    if (Array.isArray(newValue) && newValue.length === 0) continue;
-
-    // For meeting notes: always overwrite meeting-specific fields, even if user edited
-    const isMeetingOverwrite = options?.isMeetingNotes && MEETING_OVERWRITE_FIELDS.has(field);
-
-    // Skip if user manually edited this field (unless it's a meeting overwrite field)
-    if (editedFields.includes(field) && !isMeetingOverwrite) {
-      skipped.push(field);
-      continue;
-    }
-
-    const currentValue = current[field];
-    const isEmpty = (v: any) => {
-      if (v === "" || v === null || v === undefined) return true;
-      if (Array.isArray(v) && v.length === 0) return true;
-      if (typeof v === "string" && v === "[]") return true;
-      return false;
-    };
-
-    if (isEmpty(currentValue)) {
-      // Empty → fill it
-      mergedProps[field] = newValue;
-      updated.push(field);
-      propertySources[field] = {
-        document_id: sourceDocumentId,
-        confidence: confidence[field] ?? 0.5,
-        extracted_at: new Date().toISOString(),
-      };
-    } else if (options?.overwriteExisting || isMeetingOverwrite) {
-      // Force overwrite mode OR meeting-note overwrite for specific fields
-      mergedProps[field] = newValue;
-      updated.push(field);
-      propertySources[field] = {
-        document_id: sourceDocumentId,
-        confidence: confidence[field] ?? 0.5,
-        extracted_at: new Date().toISOString(),
-      };
-    } else {
-      // Non-empty → check if values differ; auto-overwrite with higher confidence (no conflict UI)
-      const valuesMatch = JSON.stringify(currentValue) === JSON.stringify(newValue);
-      if (!valuesMatch) {
-        const existingConf = propertySources[field]?.confidence ?? 0;
-        const newConf = confidence[field] ?? 0.5;
-        if (newConf >= existingConf) {
-          mergedProps[field] = newValue;
-          updated.push(field);
-          propertySources[field] = {
-            document_id: sourceDocumentId,
-            confidence: newConf,
-            extracted_at: new Date().toISOString(),
-          };
-        } else {
-          skipped.push(field);
-        }
-        // Remove any existing conflict for this field (we resolved by confidence)
-        const idx = propertyConflicts.findIndex((c) => c.field === field);
-        if (idx !== -1) {
-          propertyConflicts.splice(idx, 1);
-          removedConflicts = true;
-        }
-      } else {
-        skipped.push(field);
-      }
-    }
-  }
-
-  // Build the update payload
-  if (updated.length > 0 || removedConflicts) {
-    const updatePayload: Record<string, any> = {
-      ...mergedProps,
-      _property_sources: propertySources,
-      _property_conflicts: propertyConflicts,
-    };
-
-    const { error } = await supabase.rpc("update_company_card_properties", {
-      p_entity_id: entityId,
-      p_new_properties: updatePayload,
-    } as any);
-
-    if (error) {
-      console.error("[mergeCompanyCard] Update failed:", error);
-    }
-  }
-
-  return { updated, skipped, conflicts, entityId, companyName: entity.name };
+  // Orbit platform: company cards RPC not in schema; no-op to avoid 404
+  return { updated: [], skipped: [], conflicts: [], entityId, companyName: "" };
 }
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -164,6 +164,7 @@ import {
   insertSourceFolder,
   updateFolderCategory,
   deleteFolderAndContents,
+  deleteDocument,
   insertCompanyConnection,
   updateCompanyConnection,
   deleteCompanyConnection,
@@ -257,13 +258,8 @@ type LocalChatMessage = {
   ts: string;
 };
 
-const FOLDER_CATEGORIES = [
-  "Sourcing",
-  "BD",
-  "Mentors / Corporates",
-  "Projects",
-  "Partners",
-] as const;
+// Orbit: only Projects (self-created folders); no Sourcing, Mentoring, etc.
+const FOLDER_CATEGORIES = ["Projects"] as const;
 
 type FolderCategory = (typeof FOLDER_CATEGORIES)[number];
 
@@ -1640,13 +1636,7 @@ function SourcesTab({
   onSourceFoldersRefetch?: () => Promise<void>;
 }) {
   /** Root folder types for Google Drive sync (each connected root can be tagged as one of these). */
-  const DRIVE_ROOT_CATEGORIES = [
-    "Projects",
-    "BD",
-    "Sourcing",
-    "Partners",
-    "Mentors / Corporates",
-  ] as const;
+  const DRIVE_ROOT_CATEGORIES = ["Projects"] as const;
   type DriveFolderEntry = { id: string; name: string; category?: string };
 
   const { toast } = useToast();
@@ -4098,6 +4088,36 @@ function SourcesTab({
         </CardContent>
       </Card>
 
+      {/* Your folders — list with delete (removes from Supabase) */}
+      {sourceFolders.length > 0 && (
+        <Card className="border border-slate-200 bg-white">
+          <CardHeader className="border-b border-slate-200">
+            <CardTitle className="text-slate-900 font-mono font-black uppercase tracking-tight">Your folders</CardTitle>
+            <CardDescription className="text-slate-500 font-mono">
+              Delete a folder to remove it and all its documents from Supabase permanently.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 pt-4">
+            {sourceFolders.map((folder) => (
+              <div key={folder.id} className="flex items-center justify-between gap-3 border border-slate-200 rounded-md p-2.5 bg-white hover:border-slate-300">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Folder className="h-4 w-4 text-slate-500 shrink-0" />
+                  <span className="font-mono text-sm text-slate-900 truncate">{folder.name}</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-slate-400 hover:text-red-600 hover:bg-red-500/10 shrink-0"
+                  onClick={() => setFolderToDelete({ id: folder.id, name: folder.name })}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="border border-slate-200 bg-white">
         <CardHeader className="border-b border-slate-200">
           <CardTitle className="text-slate-900 font-mono font-black uppercase tracking-tight">Local Upload</CardTitle>
@@ -4225,61 +4245,6 @@ function SourcesTab({
                         <div className="font-mono font-bold text-slate-900 text-sm">{folder.name}</div>
                         <div className="text-[10px] text-slate-400 font-mono truncate max-w-[200px]">{folder.id}</div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <Label className="text-[10px] text-slate-400 font-mono whitespace-nowrap">Root folder type:</Label>
-                      <Select
-                        value={folder.category ?? "Projects"}
-                        onValueChange={async (value) => {
-                          const updated = connectedDriveFolders.map((f) =>
-                            f.id === folder.id ? { ...f, category: value } : f
-                          );
-                          setConnectedDriveFolders(updated);
-                          if (activeEventId) {
-                            const foldersToSave = updated.map((f) => ({ id: f.id, name: f.name, category: f.category ?? "Projects" }));
-                            await supabase.from("sync_configurations")
-                              .update({
-                                config: {
-                                  google_drive_folder_id: updated[0]?.id || null,
-                                  google_drive_folder_name: updated[0]?.name || null,
-                                  folders: foldersToSave,
-                                },
-                              })
-                              .eq("event_id", activeEventId)
-                              .eq("source_type", "google_drive");
-
-                            // Propagate category to matching source_folders so Knowledge Scope stays in sync
-                            const rootName = folder.name?.trim() || "";
-                            const rootNorm = rootName.toLowerCase().replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g, " ").trim();
-                            const rootSeg = rootNorm.replace(/\s*-\s*.*$/, "").trim();
-                            for (const sf of sourceFolders) {
-                              const sfName = (sf.name || "").trim();
-                              const sfNorm = sfName.toLowerCase().replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g, " ").trim();
-                              const sfSeg = (sfNorm.split(/\s*\/\s*/)[0] || sfNorm).replace(/\s*-\s*.*$/, "").trim();
-                              const belongs = sfNorm === rootNorm || sfNorm.startsWith(rootNorm + " / ") || sfSeg === rootSeg;
-                              if (belongs && (sf.category || "Projects") !== value) {
-                                await onFolderCategoryUpdated?.(sf.id, value);
-                              }
-                            }
-
-                            // Notify parent so initialDriveSyncConfig (and its backfill effect) stays in sync
-                            onDriveSyncConfigChanged?.(foldersToSave);
-
-                            toast({ title: "Folder type updated", description: `"${folder.name}" is now ${value}. Source folders re-categorized.` });
-                          }
-                        }}
-                      >
-                        <SelectTrigger className="w-[190px] h-8 text-xs border border-slate-200 bg-white text-slate-900 font-mono rounded-md hover:border-blue-400 transition-colors">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="bg-white border border-slate-200 shadow-lg rounded-md">
-                          {DRIVE_ROOT_CATEGORIES.map((cat) => (
-                            <SelectItem key={cat} value={cat} className="text-slate-900 font-mono hover:bg-blue-50 focus:bg-blue-50 cursor-pointer">
-                              {cat}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
                     </div>
                     {connectedDriveFolders.length > 1 && (
                       <Button
@@ -4987,6 +4952,42 @@ function SourcesTab({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete folder confirmation — removes folder and all documents from Supabase */}
+      <AlertDialog open={!!folderToDelete} onOpenChange={(open) => !open && setFolderToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-mono text-slate-900">Delete folder?</AlertDialogTitle>
+            <AlertDialogDescription className="font-mono text-slate-500">
+              &ldquo;{folderToDelete?.name}&rdquo; and all documents in it will be permanently deleted from Supabase. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="font-mono">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white font-mono"
+              onClick={async () => {
+                if (!folderToDelete) return;
+                setIsDeletingFolder(true);
+                try {
+                  const result = await onDeleteFolderAndContents?.(folderToDelete.id);
+                  if (result && "error" in result) {
+                    toast({ title: "Delete failed", description: result.error, variant: "destructive" });
+                    return;
+                  }
+                  const docCount = result && "docCount" in result ? result.docCount : 0;
+                  toast({ title: "Folder deleted", description: docCount > 0 ? `Folder and ${docCount} document(s) removed from Supabase.` : "Folder removed from Supabase." });
+                  setFolderToDelete(null);
+                } finally {
+                  setIsDeletingFolder(false);
+                }
+              }}
+            >
+              {isDeletingFolder ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -7924,12 +7925,21 @@ export default function Dashboard() {
   }, [profile, toast]);
 
   const handleDeleteSource = useCallback(async (sourceId: string) => {
-    const { error } = await deleteSource(sourceId);
-    if (error) {
-      return;
+    const source = sources.find((s) => s.id === sourceId);
+    if (source) {
+      const doc = documents.find(
+        (d: { id: string; storage_path?: string | null; title?: string | null }) =>
+          d.storage_path === source.storage_path || d.title === source.title
+      );
+      if (doc) {
+        const { error: docErr } = await deleteDocument(doc.id);
+        if (!docErr) setDocuments((prev) => prev.filter((d: { id: string }) => d.id !== doc.id));
+      }
     }
+    const { error } = await deleteSource(sourceId);
+    if (error) return;
     setSources((prev) => prev.filter((source) => source.id !== sourceId));
-  }, []);
+  }, [sources, documents]);
 
   // Load chat history on initial mount and when switching threads
   useEffect(() => {
@@ -9378,36 +9388,39 @@ export default function Dashboard() {
             }
           }
 
-          // в”Ђв”Ђ Step 3: Insert KPIs в”Ђв”Ђ
-          for (const kpi of extraction.kpis) {
-            // Check if KPI already exists (same company + metric + period)
-            const { data: existingKpi } = await supabase
-              .from("company_kpis")
-              .select("id")
-              .eq("event_id", eventId)
-              .eq("company_name", kpi.company_name)
-              .eq("metric_name", kpi.metric_name)
-              .eq("period", kpi.period || "")
-              .limit(1);
+          // Step 3: Insert KPIs (Orbit: company_kpis table not in schema; skip to avoid 404)
+          try {
+            for (const kpi of extraction.kpis) {
+              const { data: existingKpi } = await supabase
+                .from("company_kpis")
+                .select("id")
+                .eq("event_id", eventId)
+                .eq("company_name", kpi.company_name)
+                .eq("metric_name", kpi.metric_name)
+                .eq("period", kpi.period || "")
+                .limit(1);
 
-            if (!existingKpi || existingKpi.length === 0) {
-              const { error: kpiErr } = await supabase.from("company_kpis").insert({
-                event_id: eventId,
-                company_name: kpi.company_name,
-                metric_name: kpi.metric_name,
-                value: kpi.value,
-                unit: kpi.unit,
-                period: kpi.period || null,
-                metric_category: kpi.category,
-                confidence: kpi.confidence,
-                source_document_id: documentId,
-                extraction_method: "claude_extraction",
-                created_by: userId,
-              });
-              if (kpiErr) {
-                console.warn(`[EXTRACT] Failed to insert KPI:`, kpiErr);
+              if (!existingKpi || existingKpi.length === 0) {
+                const { error: kpiErr } = await supabase.from("company_kpis").insert({
+                  event_id: eventId,
+                  company_name: kpi.company_name,
+                  metric_name: kpi.metric_name,
+                  value: kpi.value,
+                  unit: kpi.unit,
+                  period: kpi.period || null,
+                  metric_category: kpi.category,
+                  confidence: kpi.confidence,
+                  source_document_id: documentId,
+                  extraction_method: "claude_extraction",
+                  created_by: userId,
+                });
+                if (kpiErr) {
+                  console.warn(`[EXTRACT] Failed to insert KPI:`, kpiErr);
+                }
               }
             }
+          } catch (_) {
+            // Orbit: table may not exist; ignore
           }
 
         } catch (err) {
