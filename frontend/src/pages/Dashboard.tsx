@@ -1581,6 +1581,8 @@ function SourcesTab({
   initialDriveSyncConfig,
   onSyncCategoriesFromDrive,
   onSourceFoldersRefetch,
+  openAddFolderAfterOAuth,
+  onOpenAddFolderConsumed,
 }: {
   sources: SourceRecord[];
   documents: Array<{
@@ -1634,6 +1636,8 @@ function SourcesTab({
     lastSyncAt: string | null;
   } | null;
   onSourceFoldersRefetch?: () => Promise<void>;
+  openAddFolderAfterOAuth?: boolean;
+  onOpenAddFolderConsumed?: () => void;
 }) {
   /** Root folder types for Google Drive sync (each connected root can be tagged as one of these). */
   const DRIVE_ROOT_CATEGORIES = ["Projects"] as const;
@@ -2032,17 +2036,15 @@ function SourcesTab({
     }
   }, [activeEventId, connectedDriveFolderId, connectedDriveFolders, ensureActiveEventId, googleApiKey, googleClientId, toast]);
 
-  // After Drive OAuth redirect: go to Sources and open Add Folder immediately
+  // When parent asks to open Add Folder (e.g. after Drive OAuth redirect)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("google_drive") !== "connected") return;
-    window.history.replaceState(null, "", window.location.pathname || "/");
-    setActiveTab("sources");
+    if (!openAddFolderAfterOAuth) return;
     const t = setTimeout(() => {
       connectDrivePortfolioFolder();
+      onOpenAddFolderConsumed?.();
     }, 700);
     return () => clearTimeout(t);
-  }, [connectDrivePortfolioFolder]);
+  }, [openAddFolderAfterOAuth, connectDrivePortfolioFolder, onOpenAddFolderConsumed]);
 
   // в”Ђв”Ђ Core folder sync logic в”Ђв”Ђ
   const syncGoogleDriveFolder = useCallback(async (foldersOverride?: Array<{ id: string; name: string }>) => {
@@ -7436,6 +7438,7 @@ export default function Dashboard() {
   } | null>(null);
   const [lastEvidenceThreadId, setLastEvidenceThreadId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("chat");
+  const [openAddFolderAfterOAuth, setOpenAddFolderAfterOAuth] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [multiAgentEnabled, setMultiAgentEnabled] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -7555,6 +7558,15 @@ export default function Dashboard() {
       setActiveTab("overview");
     }
   }, [profile?.role, activeTab]);
+
+  // After Drive OAuth redirect: go to Sources and ask SourcesTab to open Add Folder
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("google_drive") !== "connected") return;
+    window.history.replaceState(null, "", window.location.pathname || "/");
+    setActiveTab("sources");
+    setOpenAddFolderAfterOAuth(true);
+  }, []);
 
   // Fetch company context when Account tab is open (for editable company name/description)
   useEffect(() => {
@@ -13537,6 +13549,8 @@ export default function Dashboard() {
                   setSourceFolders((data || []) as SourceFolder[]);
                 }
               }}
+              openAddFolderAfterOAuth={openAddFolderAfterOAuth}
+              onOpenAddFolderConsumed={() => setOpenAddFolderAfterOAuth(false)}
             />
           </TabsContent>
 
