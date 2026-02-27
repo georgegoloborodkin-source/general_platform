@@ -1913,13 +1913,19 @@ function SourcesTab({
       });
       return;
     }
-    let accessToken = await getGoogleAccessToken();
-    if (!accessToken) accessToken = await getGoogleAccessToken(true);
+    // Require backend Drive token (from Drive OAuth). If missing, open OAuth immediately.
+    const { data: sessionData } = await supabase.auth.getSession();
+    const session = sessionData?.session;
+    const supabaseAccessToken = session?.access_token;
+    let accessToken: string | null = null;
+    if (supabaseAccessToken) {
+      accessToken = await getGoogleAccessTokenFromBackend(supabaseAccessToken);
+    }
     if (!accessToken) {
       try {
         toast({
           title: "Connect Google Drive",
-          description: "Redirecting to Google to grant Drive access…",
+          description: "Opening Google to grant Drive access…",
         });
         await triggerGoogleOAuthForDrive();
       } catch (e) {
@@ -2024,7 +2030,7 @@ function SourcesTab({
     } catch (err) {
       toast({ title: "Picker error", description: err instanceof Error ? err.message : "Failed to open picker.", variant: "destructive" });
     }
-  }, [activeEventId, connectedDriveFolderId, connectedDriveFolders, ensureActiveEventId, getGoogleAccessToken, googleApiKey, googleClientId, toast]);
+  }, [activeEventId, connectedDriveFolderId, connectedDriveFolders, ensureActiveEventId, googleApiKey, googleClientId, toast]);
 
   // в”Ђв”Ђ Core folder sync logic в”Ђв”Ђ
   const syncGoogleDriveFolder = useCallback(async (foldersOverride?: Array<{ id: string; name: string }>) => {
