@@ -4566,97 +4566,6 @@ function SourcesTab({
         </Card>
       )}
 
-      {/* 5. Create a folder */}
-      <Card className="border border-slate-200 bg-white">
-        <CardHeader className="border-b border-slate-200">
-          <CardTitle className="text-slate-900 font-mono font-black uppercase tracking-tight flex items-center gap-2">
-            <FolderPlus className="h-5 w-5 text-blue-600" />
-            Create a folder
-          </CardTitle>
-          <CardDescription className="text-slate-500 font-mono">
-            Add a folder for local uploads or Google Drive. Same folders work for both.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3 pt-4">
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="flex-1 min-w-[160px]">
-              <Label className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1 block">Folder name</Label>
-              <Input
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                placeholder="e.g. Q1 Deals, Due Diligence"
-                className="border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 text-sm h-9"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && newFolderName.trim()) {
-                    e.preventDefault();
-                    (async () => {
-                      setIsCreatingFolder(true);
-                      try {
-                        const folder = await onCreateFolder(newFolderName.trim(), "Projects");
-                        if (folder) {
-                          toast({ title: "Folder created", description: `"${folder.name}" is ready for uploads and Drive.` });
-                          setNewFolderName("");
-                        }
-                      } finally {
-                        setIsCreatingFolder(false);
-                      }
-                    })();
-                  }
-                }}
-              />
-            </div>
-            <Button
-              disabled={!newFolderName.trim() || isCreatingFolder}
-              onClick={async () => {
-                if (!newFolderName.trim()) return;
-                setIsCreatingFolder(true);
-                try {
-                  const folder = await onCreateFolder(newFolderName.trim(), "Projects");
-                  if (folder) {
-                    toast({ title: "Folder created", description: `"${folder.name}" is ready for uploads and Drive.` });
-                    setNewFolderName("");
-                  }
-                } finally {
-                  setIsCreatingFolder(false);
-                }
-              }}
-              className="bg-blue-600 text-slate-900 hover:bg-blue-600/80 font-bold h-9 px-4"
-            >
-              {isCreatingFolder ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
-              Create folder
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* 6. Your folders — compact */}
-      {sourceFolders.length > 0 && (
-        <Card className="border border-slate-200 bg-white">
-          <CardHeader className="border-b border-slate-200 py-2">
-            <CardTitle className="text-slate-900 font-mono font-black uppercase tracking-tight text-sm">Your folders</CardTitle>
-            <CardDescription className="text-slate-500 font-mono text-[10px]">Delete folder = remove from Supabase.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-1 pt-2 pb-3">
-            {sourceFolders.map((folder) => (
-              <div key={folder.id} className="flex items-center justify-between gap-2 border border-slate-200 rounded px-2 py-1.5 bg-white hover:border-slate-300">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <Folder className="h-3.5 w-3.5 text-slate-500 shrink-0" />
-                  <span className="font-mono text-xs text-slate-900 truncate">{folder.name}</span>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-slate-400 hover:text-red-600 hover:bg-red-500/10 shrink-0"
-                  onClick={() => setFolderToDelete({ id: folder.id, name: folder.name })}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
       <Card className="border border-slate-200 bg-white">
         <CardHeader className="border-b border-slate-200">
           <CardTitle className="text-slate-900 font-mono font-black uppercase tracking-tight">Tracked Sources</CardTitle>
@@ -4807,10 +4716,9 @@ function SourcesTab({
                 </Button>
               </div>
 
-              {/* Existing folders filtered by selected category */}
+              {/* Existing folders — show all so user can choose any */}
               {(() => {
-                const catFolders = sourceFolders.filter((f) => (f.category || "Projects") === folderDialogCategory);
-                if (catFolders.length === 0) {
+                if (sourceFolders.length === 0) {
                   return (
                     <div className="text-xs text-slate-400 font-mono border border-slate-200/15 rounded-md p-3 text-center">
                       No folders yet. Create one above.
@@ -4819,7 +4727,7 @@ function SourcesTab({
                 }
                 return (
                   <div className="space-y-1 max-h-[200px] overflow-y-auto">
-                    {catFolders.map((folder) => (
+                    {sourceFolders.map((folder) => (
                       <label
                         key={folder.id}
                         className="flex items-center gap-2 text-xs border border-slate-300 px-2 py-1.5 rounded-md cursor-pointer hover:bg-blue-600/5 hover:border-blue-500 transition-colors text-slate-900 font-mono"
@@ -7700,6 +7608,29 @@ export default function Dashboard() {
       setFoldersExpanded(true);
     }
   }, [scopes]);
+
+  // Sync source folders into Knowledge Scope so created folders appear as scope options
+  useEffect(() => {
+    setScopes((prev) => {
+      const nonFolder = prev.filter((s) => s.type !== "folder");
+      const folderScopes: ScopeItem[] = sourceFolders.map((f) => ({
+        id: f.id,
+        label: f.name,
+        checked: prev.find((s) => s.id === f.id)?.checked ?? false,
+        type: "folder",
+      }));
+      return [...nonFolder, ...folderScopes];
+    });
+  }, [sourceFolders]);
+
+  // When user opens Chat tab, ensure source folders are loaded so Knowledge Scope shows them
+  useEffect(() => {
+    if (activeTab !== "chat" || !activeEventId) return;
+    getSourceFoldersByEvent(activeEventId).then(({ data }) => {
+      if (data?.length !== undefined) setSourceFolders((data || []) as SourceFolder[]);
+    });
+  }, [activeTab, activeEventId]);
+
   const [draftDocumentId, setDraftDocumentId] = useState<string | null>(null);
   const [viewingDocument, setViewingDocument] = useState<{
     id: string;
@@ -9426,7 +9357,7 @@ export default function Dashboard() {
             }
           }
 
-          // Step 3: Insert KPIs (Orbit: company_kpis table not in schema; skip to avoid 404)
+          // Step 3: Insert KPIs into company_kpis (table created by migration 20260223000017_company_kpis)
           try {
             for (const kpi of extraction.kpis) {
               const { data: existingKpi } = await supabase
@@ -9458,7 +9389,7 @@ export default function Dashboard() {
               }
             }
           } catch (_) {
-            // Orbit: table may not exist; ignore
+            // Non-fatal: log already emitted above
           }
 
         } catch (err) {
@@ -13090,7 +13021,7 @@ export default function Dashboard() {
                   </button>
                 </div>
                 <div className="flex flex-col gap-0.5 overflow-y-auto min-h-0">
-                  {/* Non-folder scopes */}
+                  {/* Non-folder scopes (My docs, Team docs, etc.) */}
                   <div className="flex flex-wrap gap-1">
                     {scopes.filter((s) => s.type !== "folder").map((s) => (
                       <label
@@ -13110,6 +13041,31 @@ export default function Dashboard() {
                       </label>
                     ))}
                   </div>
+                  {/* Folder scopes — created folders from Sources */}
+                  {scopes.filter((s) => s.type === "folder").length > 0 && (
+                    <div className="mt-1.5 pt-1.5 border-t border-slate-200/50">
+                      <div className="text-[9px] text-slate-400 font-mono uppercase tracking-wider mb-1">Folders</div>
+                      <div className="flex flex-wrap gap-1">
+                        {scopes.filter((s) => s.type === "folder").map((s) => (
+                          <label
+                            key={s.id}
+                            className={`inline-flex items-center gap-1 text-[10px] border px-1.5 py-0.5 rounded cursor-pointer transition-all font-mono shrink-0 max-w-full min-w-0 ${
+                              s.checked
+                                ? "border-blue-500/50 bg-blue-600/10 text-blue-600"
+                                : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-600"
+                            }`}
+                          >
+                            <Checkbox
+                              checked={s.checked}
+                              onCheckedChange={(val) => toggleScope(s.id, val === true)}
+                              className="h-2.5 w-2.5 border-slate-300 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-500 shrink-0"
+                            />
+                            <span className="truncate">{s.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
