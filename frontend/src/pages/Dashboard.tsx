@@ -2032,6 +2032,18 @@ function SourcesTab({
     }
   }, [activeEventId, connectedDriveFolderId, connectedDriveFolders, ensureActiveEventId, googleApiKey, googleClientId, toast]);
 
+  // After Drive OAuth redirect: go to Sources and open Add Folder immediately
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("google_drive") !== "connected") return;
+    window.history.replaceState(null, "", window.location.pathname || "/");
+    setActiveTab("sources");
+    const t = setTimeout(() => {
+      connectDrivePortfolioFolder();
+    }, 700);
+    return () => clearTimeout(t);
+  }, [connectDrivePortfolioFolder]);
+
   // в”Ђв”Ђ Core folder sync logic в”Ђв”Ђ
   const syncGoogleDriveFolder = useCallback(async (foldersOverride?: Array<{ id: string; name: string }>) => {
     // Use override when e.g. we just added a folder and state may not have updated yet
