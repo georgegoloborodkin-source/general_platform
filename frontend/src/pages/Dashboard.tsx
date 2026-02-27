@@ -1924,7 +1924,8 @@ function SourcesTab({
         await triggerGoogleOAuthForDrive();
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        setDriveConnectCooldownUntil(Date.now() + 65000);
+        const is429 = msg.includes("429") || msg.toLowerCase().includes("too many");
+        if (is429) setDriveConnectCooldownUntil(Date.now() + 15000);
         toast({
           title: "Could not connect Google Drive",
           description: msg,
@@ -2047,7 +2048,8 @@ function SourcesTab({
         await triggerGoogleOAuthForDrive();
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        setDriveConnectCooldownUntil(Date.now() + 65000);
+        const is429 = msg.includes("429") || msg.toLowerCase().includes("too many");
+        if (is429) setDriveConnectCooldownUntil(Date.now() + 15000);
         toast({ title: "Could not connect Google Drive", description: msg, variant: "destructive" });
       }
       return;
@@ -2658,7 +2660,15 @@ function SourcesTab({
     if (!eventId) { toast({ title: "No active event", variant: "destructive" }); return; }
     let token = await getGoogleAccessToken();
     if (!token) token = await getGoogleAccessToken(true);
-    if (!token) { toast({ title: "Google access needed", description: "Sign in again to grant Gmail read access.", variant: "destructive" }); return; }
+    if (!token) {
+      try {
+        toast({ title: "Grant Gmail access", description: "Redirecting to Google…" });
+        await triggerGoogleOAuthForDrive();
+      } catch (e) {
+        toast({ title: "Could not connect", description: e instanceof Error ? e.message : "Grant Google access to use Gmail sync.", variant: "destructive" });
+      }
+      return;
+    }
 
     // Verify token works for Gmail
     try {
@@ -3686,7 +3696,8 @@ function SourcesTab({
           await triggerGoogleOAuthForDrive();
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
-          setDriveConnectCooldownUntil(Date.now() + 65000);
+          const is429 = msg.includes("429") || msg.toLowerCase().includes("too many");
+          if (is429) setDriveConnectCooldownUntil(Date.now() + 15000);
           toast({ title: "Could not connect Google Drive", description: msg, variant: "destructive" });
         }
         return;
@@ -3917,7 +3928,8 @@ function SourcesTab({
         await triggerGoogleOAuthForDrive();
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        setDriveConnectCooldownUntil(Date.now() + 65000);
+        const is429 = msg.includes("429") || msg.toLowerCase().includes("too many");
+        if (is429) setDriveConnectCooldownUntil(Date.now() + 15000);
         toast({ title: "Could not connect Google Drive", description: msg, variant: "destructive" });
       }
       return;
@@ -4008,101 +4020,218 @@ function SourcesTab({
         </Card>
       )}
 
-      {/* Create a folder — for both local uploads and Google Drive */}
+      {/* 1. Google Drive Folder Sync (top) */}
+      {/* в”Ђв”Ђ Google Drive Portfolio Folder Sync в”Ђв”Ђ */}
       <Card className="border border-slate-200 bg-white">
         <CardHeader className="border-b border-slate-200">
-          <CardTitle className="text-slate-900 font-mono font-black uppercase tracking-tight flex items-center gap-2">
-            <FolderPlus className="h-5 w-5 text-blue-600" />
-            Create a folder
+          <CardTitle className="text-slate-900 font-mono font-black uppercase tracking-tight">
+            <Cloud className="h-5 w-5 inline mr-2 text-blue-600" />
+            Google Drive Folder Sync
           </CardTitle>
           <CardDescription className="text-slate-500 font-mono">
-            Add a folder for local uploads or Google Drive. Same folders work for both — create once, then upload files or connect a Drive folder to it.
+            Connect a root folder from Google Drive. Each sub-folder will be treated as a separate project.
+            All documents are automatically fetched, embedded, and extracted.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3 pt-4">
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="flex-1 min-w-[160px]">
-              <Label className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1 block">Folder name</Label>
-              <Input
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                placeholder="e.g. Q1 Deals, Due Diligence"
-                className="border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 text-sm h-9"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    if (newFolderName.trim()) {
-                      (async () => {
-                        setIsCreatingFolder(true);
-                        try {
-                          const folder = await onCreateFolder(newFolderName.trim(), "Projects");
-                          if (folder) {
-                            toast({ title: "Folder created", description: `"${folder.name}" is ready for uploads and Drive.` });
-                            setNewFolderName("");
+        <CardContent className="space-y-4">
+          {(connectedDriveFolders.length > 0 || connectedDriveFolderId) ? (
+            <>
+              <div className="space-y-2">
+                {(connectedDriveFolders.length > 0 ? connectedDriveFolders : [{ id: connectedDriveFolderId!, name: connectedDriveFolderName || "Project folder", category: "Projects" as const }]).map((folder) => (
+                  <div key={folder.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border-2 border-blue-500/30 bg-blue-600/5 flex-wrap">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <Folder className="h-5 w-5 text-blue-600 shrink-0" />
+                      <div className="min-w-0">
+                        <div className="font-mono font-bold text-slate-900 text-sm">{folder.name}</div>
+                        <div className="text-[10px] text-slate-400 font-mono truncate max-w-[200px]">{folder.id}</div>
+                      </div>
+                    </div>
+                    {connectedDriveFolders.length > 1 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={async () => {
+                          const updated = connectedDriveFolders.filter(f => f.id !== folder.id);
+                          setConnectedDriveFolders(updated);
+                          if (updated.length > 0) {
+                            setConnectedDriveFolderId(updated[0].id);
+                            setConnectedDriveFolderName(updated[0].name);
+                          } else {
+                            setConnectedDriveFolderId(null);
+                            setConnectedDriveFolderName(null);
                           }
-                        } finally {
-                          setIsCreatingFolder(false);
-                        }
-                      })();
-                    }
-                  }
-                }}
-              />
+                          if (activeEventId) {
+                            const foldersToSave = updated.map((f) => ({ id: f.id, name: f.name, category: f.category ?? "Projects" }));
+                            await supabase.from("sync_configurations")
+                              .update({
+                                config: {
+                                  google_drive_folder_id: updated[0]?.id || null,
+                                  google_drive_folder_name: updated[0]?.name || null,
+                                  folders: foldersToSave,
+                                },
+                              })
+                              .eq("event_id", activeEventId)
+                              .eq("source_type", "google_drive");
+                          }
+                          toast({ title: "Folder removed", description: `Removed "${folder.name}" from sync.` });
+                        }}
+                        className="text-slate-400 hover:text-red-400 hover:bg-red-500/10"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between p-2.5 rounded-lg border border-slate-200/15 bg-white">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+                    </span>
+                    <span className="text-[10px] text-emerald-400 font-mono font-semibold">AUTO-SYNC ACTIVE</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-mono">Every 15 min</span>
+                  {lastDriveSyncAt && (
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      | Last: {new Date(lastDriveSyncAt).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={connectDrivePortfolioFolder}
+                    disabled={isDriveConnectOnCooldown}
+                    className="border border-slate-200 bg-white text-slate-500 hover:bg-blue-500/10 hover:border-blue-500 hover:text-blue-600 font-bold text-[10px] h-7 px-2 disabled:opacity-50"
+                  >
+                    <FolderPlus className="h-3.5 w-3.5 mr-1" />
+                    {isDriveConnectOnCooldown ? `Wait ${driveConnectCooldownSeconds}s` : "Add Folder"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => syncGoogleDriveFolder()}
+                    disabled={isSyncingDrive || !canImport}
+                    className="bg-blue-600 text-slate-900 hover:bg-blue-600/80 font-bold border-2 border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-500/20 disabled:opacity-50 h-7 text-[10px] px-2"
+                  >
+                    {isSyncingDrive ? (
+                      <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />Syncing...</>
+                    ) : (
+                      <><RefreshCw className="h-3.5 w-3.5 mr-1" />Sync Now</>
+                    )}
+                  </Button>
+                </div>
+              </div>
+              {driveSyncProgress && (
+                <div className="space-y-2 p-3 rounded-lg border border-blue-500/30 bg-blue-600/5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono text-slate-600">
+                      {driveSyncProgress.phase}{" "}
+                      {driveSyncProgress.total > 0 && (
+                        <>{driveSyncProgress.current}/{driveSyncProgress.total}: <span className="text-blue-600">{driveSyncProgress.currentItem}</span></>
+                      )}
+                    </span>
+                    {driveSyncProgress.total > 0 && (
+                      <span className="text-xs font-mono text-slate-400">
+                        {Math.round((driveSyncProgress.current / driveSyncProgress.total) * 100)}%
+                      </span>
+                    )}
+                  </div>
+                  {driveSyncProgress.total > 0 && (
+                    <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-500"
+                        style={{ width: `${(driveSyncProgress.current / driveSyncProgress.total) * 100}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+              {driveSyncResults.length > 0 && !driveSyncProgress && (
+                <div className="space-y-1 max-h-40 overflow-y-auto">
+                  {driveSyncResults.map((r, i) => (
+                    <div key={i} className="flex items-center gap-2 text-[10px] font-mono text-slate-500 px-2 py-1 rounded bg-slate-50">
+                      <Building2 className="h-3 w-3 text-blue-600 flex-shrink-0" />
+                      <span className="font-bold text-slate-700">{r.companyName}</span>
+                      {r.newFiles > 0 && <span className="text-emerald-400">+{r.newFiles} new</span>}
+                      {r.updatedFiles > 0 && <span className="text-blue-600">{r.updatedFiles} updated</span>}
+                      {r.skippedFiles > 0 && <span className="text-slate-400">{r.skippedFiles} unchanged</span>}
+                      {r.newFiles === 0 && r.updatedFiles === 0 && r.skippedFiles === 0 && <span className="text-slate-400">empty folder</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-center py-6 space-y-3">
+              <Cloud className="h-10 w-10 text-slate-300 mx-auto" />
+              <p className="text-sm text-slate-400 font-mono">No Drive folder connected yet.</p>
+              <Button
+                onClick={connectDrivePortfolioFolder}
+                disabled={!canImport || isDriveConnectOnCooldown}
+                className="bg-blue-600 text-slate-900 hover:bg-blue-600/80 font-bold border-2 border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-500/20 disabled:opacity-50"
+              >
+                <Folder className="h-4 w-4 mr-2" />
+                {isDriveConnectOnCooldown ? `Wait ${driveConnectCooldownSeconds}s before retrying` : "Connect Drive Folder"}
+              </Button>
+              <p className="text-[10px] text-slate-400 font-mono">
+                Pick a root folder from Google Drive. Each sub-folder inside it will be treated as a separate project.
+              </p>
             </div>
-            <Button
-              disabled={!newFolderName.trim() || isCreatingFolder}
-              onClick={async () => {
-                if (!newFolderName.trim()) return;
-                setIsCreatingFolder(true);
-                try {
-                  const folder = await onCreateFolder(newFolderName.trim(), "Projects");
-                  if (folder) {
-                    toast({ title: "Folder created", description: `"${folder.name}" is ready for uploads and Drive.` });
-                    setNewFolderName("");
-                  }
-                } finally {
-                  setIsCreatingFolder(false);
-                }
-              }}
-              className="bg-blue-600 text-slate-900 hover:bg-blue-600/80 font-bold h-9 px-4"
-            >
-              {isCreatingFolder ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
-              Create folder
-            </Button>
-          </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Your folders — list with delete (removes from Supabase) */}
-      {sourceFolders.length > 0 && (
-        <Card className="border border-slate-200 bg-white">
-          <CardHeader className="border-b border-slate-200">
-            <CardTitle className="text-slate-900 font-mono font-black uppercase tracking-tight">Your folders</CardTitle>
-            <CardDescription className="text-slate-500 font-mono">
-              Delete a folder to remove it and all its documents from Supabase permanently.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2 pt-4">
-            {sourceFolders.map((folder) => (
-              <div key={folder.id} className="flex items-center justify-between gap-3 border border-slate-200 rounded-md p-2.5 bg-white hover:border-slate-300">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Folder className="h-4 w-4 text-slate-500 shrink-0" />
-                  <span className="font-mono text-sm text-slate-900 truncate">{folder.name}</span>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-slate-400 hover:text-red-600 hover:bg-red-500/10 shrink-0"
-                  onClick={() => setFolderToDelete({ id: folder.id, name: folder.name })}
-                >
-                  <Trash2 className="h-4 w-4" />
+      {/* 2. Google Drive Import */}
+      <Card className="border border-slate-200 bg-white">
+        <CardHeader className="border-b border-slate-200">
+          <CardTitle className="text-slate-900 font-mono font-black uppercase tracking-tight">Google Drive Import</CardTitle>
+          <CardDescription className="text-slate-500 font-mono">
+            Paste a Google Docs/Slides/Sheets link or choose from Drive.
+            {selectedFolderId !== "none" && (
+              <span className="ml-2 text-blue-600">
+                в†' Default folder: {sourceFolders.find(f => f.id === selectedFolderId)?.name}
+              </span>
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="md:col-span-2">
+              <Label className="text-slate-900 font-mono font-bold">Drive URL</Label>
+              <Input
+                value={driveUrl}
+                onChange={(e) => setDriveUrl(e.target.value)}
+                placeholder="https://docs.google.com/document/d/..."
+                className="border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400"
+              />
+            </div>
+            <div className="flex items-end">
+              <div className="flex w-full flex-col gap-2">
+                <Button onClick={openDrivePicker} variant="outline" disabled={isDriveConnectOnCooldown} className="w-full border border-slate-200 bg-white text-slate-900 hover:bg-blue-500/10 hover:border-blue-500 hover:text-blue-600 font-bold disabled:opacity-50">
+                  <Folder className="h-4 w-4 mr-2" />
+                  {isDriveConnectOnCooldown ? `Wait ${driveConnectCooldownSeconds}s before retrying` : "Choose from Drive"}
+                </Button>
+                <Button onClick={handleImportDrive} disabled={isImportingDrive || isDriveConnectOnCooldown} className="w-full bg-blue-600 text-slate-900 hover:bg-blue-600/80 font-bold border-2 border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-500/20 disabled:opacity-50">
+                  {isImportingDrive ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+                  {isDriveConnectOnCooldown ? `Wait ${driveConnectCooldownSeconds}s` : "Import Drive"}
                 </Button>
               </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+            </div>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-slate-500 font-mono">
+            <Checkbox checked={autoExtract} onCheckedChange={(val) => setAutoExtract(val === true)} className="border-slate-200 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-500" />
+            Auto-extract and log decision after import
+          </label>
+          <p className="text-xs text-slate-500 font-mono">
+            Uses your Google Drive OAuth token. If access fails, sign out and sign in again.
+          </p>
+        </CardContent>
+      </Card>
 
+      {/* 3. Local Upload */}
       <Card className="border border-slate-200 bg-white">
         <CardHeader className="border-b border-slate-200">
           <CardTitle className="text-slate-900 font-mono font-black uppercase tracking-tight">Local Upload</CardTitle>
@@ -4159,235 +4288,7 @@ function SourcesTab({
         </CardContent>
       </Card>
 
-      <Card className="border border-slate-200 bg-white">
-        <CardHeader className="border-b border-slate-200">
-          <CardTitle className="text-slate-900 font-mono font-black uppercase tracking-tight">Google Drive Import</CardTitle>
-          <CardDescription className="text-slate-500 font-mono">
-            Paste a Google Docs/Slides/Sheets link or choose from Drive.
-            {selectedFolderId !== "none" && (
-              <span className="ml-2 text-blue-600">
-                в†’ Default folder: {sourceFolders.find(f => f.id === selectedFolderId)?.name}
-              </span>
-            )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="md:col-span-2">
-              <Label className="text-slate-900 font-mono font-bold">Drive URL</Label>
-              <Input
-                value={driveUrl}
-                onChange={(e) => setDriveUrl(e.target.value)}
-                placeholder="https://docs.google.com/document/d/..."
-                className="border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400"
-              />
-            </div>
-            <div className="flex items-end">
-              <div className="flex w-full flex-col gap-2">
-                <Button onClick={openDrivePicker} variant="outline" disabled={isDriveConnectOnCooldown} className="w-full border border-slate-200 bg-white text-slate-900 hover:bg-blue-500/10 hover:border-blue-500 hover:text-blue-600 font-bold disabled:opacity-50">
-                  <Folder className="h-4 w-4 mr-2" />
-                  {isDriveConnectOnCooldown ? `Wait ${driveConnectCooldownSeconds}s before retrying` : "Choose from Drive"}
-                </Button>
-                <Button onClick={handleImportDrive} disabled={isImportingDrive || isDriveConnectOnCooldown} className="w-full bg-blue-600 text-slate-900 hover:bg-blue-600/80 font-bold border-2 border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-500/20 disabled:opacity-50">
-                  {isImportingDrive ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
-                  {isDriveConnectOnCooldown ? `Wait ${driveConnectCooldownSeconds}s` : "Import Drive"}
-                </Button>
-              </div>
-            </div>
-          </div>
-          <label className="flex items-center gap-2 text-xs text-slate-500 font-mono">
-            <Checkbox checked={autoExtract} onCheckedChange={(val) => setAutoExtract(val === true)} className="border-slate-200 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-500" />
-            Auto-extract and log decision after import
-          </label>
-          <p className="text-xs text-slate-500 font-mono">
-            Uses your Google Drive OAuth token. If access fails, sign out and sign in again.
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* в”Ђв”Ђ Google Drive Portfolio Folder Sync в”Ђв”Ђ */}
-      <Card className="border border-slate-200 bg-white">
-        <CardHeader className="border-b border-slate-200">
-          <CardTitle className="text-slate-900 font-mono font-black uppercase tracking-tight">
-            <Cloud className="h-5 w-5 inline mr-2 text-blue-600" />
-            Google Drive Folder Sync
-          </CardTitle>
-          <CardDescription className="text-slate-500 font-mono">
-            Connect a root folder from Google Drive. Each sub-folder will be treated as a separate project.
-            All documents are automatically fetched, embedded, and extracted.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {(connectedDriveFolders.length > 0 || connectedDriveFolderId) ? (
-            <>
-              {/* Connected folders list */}
-              <div className="space-y-2">
-                {(connectedDriveFolders.length > 0 ? connectedDriveFolders : [{ id: connectedDriveFolderId!, name: connectedDriveFolderName || "Project folder", category: "Projects" as const }]).map((folder) => (
-                  <div key={folder.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border-2 border-blue-500/30 bg-blue-600/5 flex-wrap">
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <Folder className="h-5 w-5 text-blue-600 shrink-0" />
-                      <div className="min-w-0">
-                        <div className="font-mono font-bold text-slate-900 text-sm">{folder.name}</div>
-                        <div className="text-[10px] text-slate-400 font-mono truncate max-w-[200px]">{folder.id}</div>
-                      </div>
-                    </div>
-                    {connectedDriveFolders.length > 1 && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={async () => {
-                          const updated = connectedDriveFolders.filter(f => f.id !== folder.id);
-                          setConnectedDriveFolders(updated);
-                          if (updated.length > 0) {
-                            setConnectedDriveFolderId(updated[0].id);
-                            setConnectedDriveFolderName(updated[0].name);
-                          } else {
-                            setConnectedDriveFolderId(null);
-                            setConnectedDriveFolderName(null);
-                          }
-                          // Persist updated list (include category for each folder)
-                          if (activeEventId) {
-                            const foldersToSave = updated.map((f) => ({ id: f.id, name: f.name, category: f.category ?? "Projects" }));
-                            await supabase.from("sync_configurations")
-                              .update({
-                                config: {
-                                  google_drive_folder_id: updated[0]?.id || null,
-                                  google_drive_folder_name: updated[0]?.name || null,
-                                  folders: foldersToSave,
-                                },
-                              })
-                              .eq("event_id", activeEventId)
-                              .eq("source_type", "google_drive");
-                          }
-                          toast({ title: "Folder removed", description: `Removed "${folder.name}" from sync.` });
-                        }}
-                        className="text-slate-400 hover:text-red-400 hover:bg-red-500/10"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Sync status bar */}
-              <div className="flex items-center justify-between p-2.5 rounded-lg border border-slate-200/15 bg-white">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
-                    </span>
-                    <span className="text-[10px] text-emerald-400 font-mono font-semibold">AUTO-SYNC ACTIVE</span>
-                  </div>
-                  <span className="text-[10px] text-slate-400 font-mono">Every 15 min</span>
-                  {lastDriveSyncAt && (
-                    <span className="text-[10px] text-slate-400 font-mono">
-                      | Last: {new Date(lastDriveSyncAt).toLocaleString()}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={connectDrivePortfolioFolder}
-                    disabled={isDriveConnectOnCooldown}
-                    className="border border-slate-200 bg-white text-slate-500 hover:bg-blue-500/10 hover:border-blue-500 hover:text-blue-600 font-bold text-[10px] h-7 px-2 disabled:opacity-50"
-                  >
-                    <FolderPlus className="h-3.5 w-3.5 mr-1" />
-                    {isDriveConnectOnCooldown ? `Wait ${driveConnectCooldownSeconds}s` : "Add Folder"}
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => syncGoogleDriveFolder()}
-                    disabled={isSyncingDrive || !canImport}
-                    className="bg-blue-600 text-slate-900 hover:bg-blue-600/80 font-bold border-2 border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-500/20 disabled:opacity-50 h-7 text-[10px] px-2"
-                  >
-                    {isSyncingDrive ? (
-                      <>
-                        <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-                        Syncing...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="h-3.5 w-3.5 mr-1" />
-                        Sync Now
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-
-              {/* Sync progress */}
-              {driveSyncProgress && (
-                <div className="space-y-2 p-3 rounded-lg border border-blue-500/30 bg-blue-600/5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-mono text-slate-600">
-                      {driveSyncProgress.phase}{" "}
-                      {driveSyncProgress.total > 0 && (
-                        <>
-                          {driveSyncProgress.current}/{driveSyncProgress.total}:{" "}
-                          <span className="text-blue-600">{driveSyncProgress.currentItem}</span>
-                        </>
-                      )}
-                    </span>
-                    {driveSyncProgress.total > 0 && (
-                      <span className="text-xs font-mono text-slate-400">
-                        {Math.round((driveSyncProgress.current / driveSyncProgress.total) * 100)}%
-                      </span>
-                    )}
-                  </div>
-                  {driveSyncProgress.total > 0 && (
-                    <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                      <div
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-500"
-                        style={{ width: `${(driveSyncProgress.current / driveSyncProgress.total) * 100}%` }}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Sync results */}
-              {driveSyncResults.length > 0 && !driveSyncProgress && (
-                <div className="space-y-1 max-h-40 overflow-y-auto">
-                  {driveSyncResults.map((r, i) => (
-                    <div key={i} className="flex items-center gap-2 text-[10px] font-mono text-slate-500 px-2 py-1 rounded bg-slate-50">
-                      <Building2 className="h-3 w-3 text-blue-600 flex-shrink-0" />
-                      <span className="font-bold text-slate-700">{r.companyName}</span>
-                      {r.newFiles > 0 && <span className="text-emerald-400">+{r.newFiles} new</span>}
-                      {r.updatedFiles > 0 && <span className="text-blue-600">{r.updatedFiles} updated</span>}
-                      {r.skippedFiles > 0 && <span className="text-slate-400">{r.skippedFiles} unchanged</span>}
-                      {r.newFiles === 0 && r.updatedFiles === 0 && r.skippedFiles === 0 && (
-                        <span className="text-slate-400">empty folder</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="text-center py-6 space-y-3">
-              <Cloud className="h-10 w-10 text-slate-300 mx-auto" />
-              <p className="text-sm text-slate-400 font-mono">No Drive folder connected yet.</p>
-              <Button
-                onClick={connectDrivePortfolioFolder}
-                disabled={!canImport || isDriveConnectOnCooldown}
-                className="bg-blue-600 text-slate-900 hover:bg-blue-600/80 font-bold border-2 border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-500/20 disabled:opacity-50"
-              >
-                <Folder className="h-4 w-4 mr-2" />
-                {isDriveConnectOnCooldown ? `Wait ${driveConnectCooldownSeconds}s before retrying` : "Connect Drive Folder"}
-              </Button>
-              <p className="text-[10px] text-slate-400 font-mono">
-                Pick a root folder from Google Drive. Each sub-folder inside it will be treated as a separate project.
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* в”Ђв”Ђ Gmail Inbox Sync в”Ђв”Ђ */}
+      {/* 4. Gmail Inbox Sync */}
       <Card className="border border-slate-200 bg-white">
         <CardHeader className="border-b border-slate-200">
           <CardTitle className="text-slate-900 font-mono font-black uppercase tracking-tight">
@@ -4551,6 +4452,190 @@ function SourcesTab({
           )}
         </CardContent>
       </Card>
+
+      {/* 5. Create a folder */}
+      <Card className="border border-slate-200 bg-white">
+        <CardHeader className="border-b border-slate-200">
+          <CardTitle className="text-slate-900 font-mono font-black uppercase tracking-tight flex items-center gap-2">
+            <FolderPlus className="h-5 w-5 text-blue-600" />
+            Create a folder
+          </CardTitle>
+          <CardDescription className="text-slate-500 font-mono">
+            Add a folder for local uploads or Google Drive. Same folders work for both.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 pt-4">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex-1 min-w-[160px]">
+              <Label className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1 block">Folder name</Label>
+              <Input
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                placeholder="e.g. Q1 Deals, Due Diligence"
+                className="border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 text-sm h-9"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (newFolderName.trim()) {
+                      (async () => {
+                        setIsCreatingFolder(true);
+                        try {
+                          const folder = await onCreateFolder(newFolderName.trim(), "Projects");
+                          if (folder) {
+                            toast({ title: "Folder created", description: `"${folder.name}" is ready for uploads and Drive.` });
+                            setNewFolderName("");
+                          }
+                        } finally {
+                          setIsCreatingFolder(false);
+                        }
+                      })();
+                    }
+                  }
+                }}
+              />
+            </div>
+            <Button
+              disabled={!newFolderName.trim() || isCreatingFolder}
+              onClick={async () => {
+                if (!newFolderName.trim()) return;
+                setIsCreatingFolder(true);
+                try {
+                  const folder = await onCreateFolder(newFolderName.trim(), "Projects");
+                  if (folder) {
+                    toast({ title: "Folder created", description: `"${folder.name}" is ready for uploads and Drive.` });
+                    setNewFolderName("");
+                  }
+                } finally {
+                  setIsCreatingFolder(false);
+                }
+              }}
+              className="bg-blue-600 text-slate-900 hover:bg-blue-600/80 font-bold h-9 px-4"
+            >
+              {isCreatingFolder ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
+              Create folder
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 6. Your folders (compact) */}
+      {sourceFolders.length > 0 && (
+        <Card className="border border-slate-200 bg-white">
+          <CardHeader className="border-b border-slate-200 py-2">
+            <CardTitle className="text-slate-900 font-mono font-black uppercase tracking-tight text-sm">Your folders</CardTitle>
+            <CardDescription className="text-slate-500 font-mono text-[10px]">Delete to remove from Supabase.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1 pt-2 pb-3">
+            {sourceFolders.map((folder) => (
+              <div key={folder.id} className="flex items-center justify-between gap-2 border border-slate-200 rounded px-2 py-1.5 bg-white hover:border-slate-300">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Folder className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                  <span className="font-mono text-xs text-slate-900 truncate">{folder.name}</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-slate-400 hover:text-red-600 hover:bg-red-500/10 shrink-0"
+                  onClick={() => setFolderToDelete({ id: folder.id, name: folder.name })}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 5. Create a folder */}
+      <Card className="border border-slate-200 bg-white">
+        <CardHeader className="border-b border-slate-200">
+          <CardTitle className="text-slate-900 font-mono font-black uppercase tracking-tight flex items-center gap-2">
+            <FolderPlus className="h-5 w-5 text-blue-600" />
+            Create a folder
+          </CardTitle>
+          <CardDescription className="text-slate-500 font-mono">
+            Add a folder for local uploads or Google Drive. Same folders work for both.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 pt-4">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex-1 min-w-[160px]">
+              <Label className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1 block">Folder name</Label>
+              <Input
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                placeholder="e.g. Q1 Deals, Due Diligence"
+                className="border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 text-sm h-9"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newFolderName.trim()) {
+                    e.preventDefault();
+                    (async () => {
+                      setIsCreatingFolder(true);
+                      try {
+                        const folder = await onCreateFolder(newFolderName.trim(), "Projects");
+                        if (folder) {
+                          toast({ title: "Folder created", description: `"${folder.name}" is ready for uploads and Drive.` });
+                          setNewFolderName("");
+                        }
+                      } finally {
+                        setIsCreatingFolder(false);
+                      }
+                    })();
+                  }
+                }}
+              />
+            </div>
+            <Button
+              disabled={!newFolderName.trim() || isCreatingFolder}
+              onClick={async () => {
+                if (!newFolderName.trim()) return;
+                setIsCreatingFolder(true);
+                try {
+                  const folder = await onCreateFolder(newFolderName.trim(), "Projects");
+                  if (folder) {
+                    toast({ title: "Folder created", description: `"${folder.name}" is ready for uploads and Drive.` });
+                    setNewFolderName("");
+                  }
+                } finally {
+                  setIsCreatingFolder(false);
+                }
+              }}
+              className="bg-blue-600 text-slate-900 hover:bg-blue-600/80 font-bold h-9 px-4"
+            >
+              {isCreatingFolder ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
+              Create folder
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 6. Your folders — compact */}
+      {sourceFolders.length > 0 && (
+        <Card className="border border-slate-200 bg-white">
+          <CardHeader className="border-b border-slate-200 py-2">
+            <CardTitle className="text-slate-900 font-mono font-black uppercase tracking-tight text-sm">Your folders</CardTitle>
+            <CardDescription className="text-slate-500 font-mono text-[10px]">Delete folder = remove from Supabase.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1 pt-2 pb-3">
+            {sourceFolders.map((folder) => (
+              <div key={folder.id} className="flex items-center justify-between gap-2 border border-slate-200 rounded px-2 py-1.5 bg-white hover:border-slate-300">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Folder className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                  <span className="font-mono text-xs text-slate-900 truncate">{folder.name}</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-slate-400 hover:text-red-600 hover:bg-red-500/10 shrink-0"
+                  onClick={() => setFolderToDelete({ id: folder.id, name: folder.name })}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="border border-slate-200 bg-white">
         <CardHeader className="border-b border-slate-200">
