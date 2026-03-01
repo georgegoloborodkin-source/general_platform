@@ -1692,6 +1692,7 @@ function SourcesTab({
   const [isSyncingCategoriesFromDrive, setIsSyncingCategoriesFromDrive] = useState(false);
   const [selectedFolderIds, setSelectedFolderIds] = useState<Set<string>>(new Set());
   const [driveConnectCooldownUntil, setDriveConnectCooldownUntil] = useState(0);
+  const [isConnectingDrive, setIsConnectingDrive] = useState(false);
   // Auto-sync interval (15 minutes)
   const autoSyncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isSyncingDriveRef = useRef(false);
@@ -1917,22 +1918,25 @@ function SourcesTab({
       });
       return;
     }
-    // Require backend Drive token (from Drive OAuth). If missing, open OAuth immediately.
-    const { data: sessionData } = await supabase.auth.getSession();
-    const session = sessionData?.session;
-    const supabaseAccessToken = session?.access_token;
-    let accessToken: string | null = null;
-    if (supabaseAccessToken) {
-      accessToken = await getGoogleAccessTokenFromBackend(supabaseAccessToken);
-    }
-    if (!accessToken) {
-      try {
-        toast({
-          title: "Connect Google Drive",
-          description: "Opening Google to grant Drive access…",
-        });
-        await triggerGoogleOAuthForDrive();
-      } catch (e) {
+    setIsConnectingDrive(true);
+    toast({ title: "Connecting to Google Drive…", description: "Checking access. You may be redirected to sign in." });
+    try {
+      // Require backend Drive token (from Drive OAuth). If missing, open OAuth immediately.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData?.session;
+      const supabaseAccessToken = session?.access_token;
+      let accessToken: string | null = null;
+      if (supabaseAccessToken) {
+        accessToken = await getGoogleAccessTokenFromBackend(supabaseAccessToken);
+      }
+      if (!accessToken) {
+        try {
+          toast({
+            title: "Connect Google Drive",
+            description: "Opening Google to grant Drive access…",
+          });
+          await triggerGoogleOAuthForDrive();
+        } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         const is429 = msg.includes("429") || msg.toLowerCase().includes("too many");
         if (is429) setDriveConnectCooldownUntil(Date.now() + 15000);
@@ -2033,6 +2037,9 @@ function SourcesTab({
       picker.setVisible(true);
     } catch (err) {
       toast({ title: "Picker error", description: err instanceof Error ? err.message : "Failed to open picker.", variant: "destructive" });
+    }
+    } finally {
+      setIsConnectingDrive(false);
     }
   }, [activeEventId, connectedDriveFolderId, connectedDriveFolders, ensureActiveEventId, googleApiKey, googleClientId, toast]);
 
@@ -4124,11 +4131,11 @@ function SourcesTab({
                     variant="outline"
                     size="sm"
                     onClick={connectDrivePortfolioFolder}
-                    disabled={isDriveConnectOnCooldown}
+                    disabled={isDriveConnectOnCooldown || isConnectingDrive}
                     className="border border-slate-200 bg-white text-slate-500 hover:bg-blue-500/10 hover:border-blue-500 hover:text-blue-600 font-bold text-[10px] h-7 px-2 disabled:opacity-50"
                   >
-                    <FolderPlus className="h-3.5 w-3.5 mr-1" />
-                    {isDriveConnectOnCooldown ? `Wait ${driveConnectCooldownSeconds}s` : "Add Folder"}
+                    {isConnectingDrive ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <FolderPlus className="h-3.5 w-3.5 mr-1" />}
+                    {isDriveConnectOnCooldown ? `Wait ${driveConnectCooldownSeconds}s` : isConnectingDrive ? "Connecting…" : "Add Folder"}
                   </Button>
                   <Button
                     size="sm"
@@ -4190,11 +4197,11 @@ function SourcesTab({
               <p className="text-sm text-slate-400 font-mono">No Drive folder connected yet.</p>
               <Button
                 onClick={connectDrivePortfolioFolder}
-                disabled={!canImport || isDriveConnectOnCooldown}
+                disabled={!canImport || isDriveConnectOnCooldown || isConnectingDrive}
                 className="bg-blue-600 text-slate-900 hover:bg-blue-600/80 font-bold border-2 border-blue-500 transition-all hover:shadow-lg hover:shadow-blue-500/20 disabled:opacity-50"
               >
-                <Folder className="h-4 w-4 mr-2" />
-                {isDriveConnectOnCooldown ? `Wait ${driveConnectCooldownSeconds}s before retrying` : "Connect Drive Folder"}
+                {isConnectingDrive ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Folder className="h-4 w-4 mr-2" />}
+                {isDriveConnectOnCooldown ? `Wait ${driveConnectCooldownSeconds}s before retrying` : isConnectingDrive ? "Connecting to Google Drive…" : "Connect Drive Folder"}
               </Button>
               <p className="text-[10px] text-slate-400 font-mono">
                 Pick a root folder from Google Drive. Each sub-folder inside it will be treated as a separate project.
@@ -5303,8 +5310,8 @@ function DashboardTab({
                 <Folder className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                <p className="text-2xl font-mono font-black">{sources.length}</p>
-                <p className="text-xs text-slate-500 font-mono uppercase tracking-wider">Sources</p>
+                <p className="text-2xl font-mono font-black">{sourceFolders.length}</p>
+                <p className="text-xs text-slate-500 font-mono uppercase tracking-wider">Folders</p>
               </div>
             </div>
           </CardContent>
@@ -7609,16 +7616,21 @@ export default function Dashboard() {
     }
   }, [scopes]);
 
-  // Sync source folders into Knowledge Scope so created folders appear as scope options
+  // Sync source folders into Knowledge Scope — dedupe by name so same folder name appears once
+  const FOLDER_SCOPE_PREFIX = "folder-by-name:";
   useEffect(() => {
     setScopes((prev) => {
       const nonFolder = prev.filter((s) => s.type !== "folder");
-      const folderScopes: ScopeItem[] = sourceFolders.map((f) => ({
-        id: f.id,
-        label: f.name,
-        checked: prev.find((s) => s.id === f.id)?.checked ?? false,
-        type: "folder",
-      }));
+      const seenNames = new Set<string>();
+      const folderScopes: ScopeItem[] = [];
+      for (const f of sourceFolders) {
+        const key = (f.name || "").trim().toLowerCase();
+        if (!key || seenNames.has(key)) continue;
+        seenNames.add(key);
+        const syntheticId = `${FOLDER_SCOPE_PREFIX}${encodeURIComponent(key)}`;
+        const wasChecked = prev.find((s) => s.id === syntheticId || (s.type === "folder" && (s.label || "").trim().toLowerCase() === key))?.checked ?? false;
+        folderScopes.push({ id: syntheticId, label: f.name || "", checked: wasChecked, type: "folder" });
+      }
       return [...nonFolder, ...folderScopes];
     });
   }, [sourceFolders]);
@@ -7630,6 +7642,22 @@ export default function Dashboard() {
       if (data?.length !== undefined) setSourceFolders((data || []) as SourceFolder[]);
     });
   }, [activeTab, activeEventId]);
+
+  // Resolve folder scope selections to actual folder ids (name-deduped scopes → all ids with that name)
+  const resolveFolderIdsFromScopes = useCallback((scopeList: typeof scopes, folders: SourceFolder[]): string[] => {
+    const prefix = "folder-by-name:";
+    const ids: string[] = [];
+    for (const s of scopeList) {
+      if (s.type !== "folder" || !s.checked) continue;
+      if (s.id.startsWith(prefix)) {
+        const nameKey = decodeURIComponent(s.id.slice(prefix.length));
+        folders.filter((f) => (f.name || "").trim().toLowerCase() === nameKey).forEach((f) => ids.push(f.id));
+      } else {
+        ids.push(s.id.replace("folder:", ""));
+      }
+    }
+    return ids;
+  }, []);
 
   const [draftDocumentId, setDraftDocumentId] = useState<string | null>(null);
   const [viewingDocument, setViewingDocument] = useState<{
@@ -7713,9 +7741,16 @@ export default function Dashboard() {
         toast({ title: "No active event", description: "Cannot create folder.", variant: "destructive" });
         return null;
       }
+      const nameNorm = (name || "").trim().toLowerCase();
+      if (!nameNorm) return null;
+      const existing = sourceFolders.find((f) => (f.name || "").trim().toLowerCase() === nameNorm);
+      if (existing) {
+        toast({ title: "Folder already exists", description: `"${existing.name}" is already in your folders.`, variant: "destructive" });
+        return existing;
+      }
       const userId = user?.id || profile?.id || null;
       const { data, error } = await insertSourceFolder(eventId, {
-        name,
+        name: name.trim(),
         created_by: userId,
         category: category || "Projects",
       });
@@ -7727,7 +7762,7 @@ export default function Dashboard() {
       setSourceFolders((prev) => [folder, ...prev]);
       return folder;
     },
-    [activeEventId, profile, user, toast]
+    [activeEventId, profile, user, toast, sourceFolders]
   );
 
   const handleDeleteFolderAndContents = useCallback(
@@ -9993,10 +10028,8 @@ export default function Dashboard() {
         try {
           const threadMsgs = await getThreadMessages(threadId, 10);
 
-          // Compute folder scope for agentic RAG
-          const agentFolderIds = scopes
-            .filter((s) => s.type === "folder" && s.checked)
-            .map((s) => s.id.replace("folder:", ""));
+          // Compute folder scope for agentic RAG (resolve name-deduped scopes to all matching folder ids)
+          const agentFolderIds = resolveFolderIdsFromScopes(scopes, sourceFolders);
 
           await askAgentStream(
             {
@@ -10075,9 +10108,7 @@ export default function Dashboard() {
       const myDocsSelected = scopes.find((s) => s.id === "my-docs")?.checked ?? false;
       const teamDocsSelected = scopes.find((s) => s.id === "team-docs")?.checked ?? false;
       const currentUserId = profile?.id || user?.id || null;
-      const selectedFolderIds = scopes
-        .filter((s) => s.type === "folder" && s.checked)
-        .map((s) => s.id.replace("folder:", ""));
+      const selectedFolderIds = resolveFolderIdsFromScopes(scopes, sourceFolders);
 
       const filterDocsByFolderScope = async <T extends { id: string; folder_id?: string | null }>(
         docList: T[]
@@ -10659,14 +10690,16 @@ export default function Dashboard() {
           const bestByDoc = new Map<string, any>();
           for (const results of allResults) {
             for (const m of results) {
+              const score = m.combined_score ?? m.similarity;
               const existing = bestByDoc.get(m.document_id);
-              if (!existing || m.similarity > existing.similarity) {
+              const existingScore = existing ? (existing.combined_score ?? existing.similarity) : -1;
+              if (!existing || score > existingScore) {
                 bestByDoc.set(m.document_id, m);
               }
             }
           }
           const mergedMatches = Array.from(bestByDoc.values())
-            .sort((a, b) => b.similarity - a.similarity)
+            .sort((a, b) => (b.combined_score ?? b.similarity) - (a.combined_score ?? a.similarity))
             .slice(0, 25);
 
           if (mergedMatches.length === 0) return [];
@@ -10678,8 +10711,13 @@ export default function Dashboard() {
           let finalChunks: Array<{ id: string; text: string; score?: number; metadata?: Record<string, unknown> }> = mergedMatches.map((m: any) => ({
             id: m.document_id,
             text: (m.parent_text || m.chunk_text || "").slice(0, 1500),
-            score: m.similarity,
-            metadata: { chunk_text: m.chunk_text, parent_text: m.parent_text },
+            score: m.combined_score ?? m.similarity,
+            metadata: {
+              chunk_text: m.chunk_text,
+              parent_text: m.parent_text,
+              document_created_at: m.document_created_at ?? undefined,
+              event_created_at: m.event_created_at ?? undefined,
+            },
           }));
 
           if (useGraphRAG && finalChunks.length > 0 && !isRetrievalBudgetExhausted()) {
@@ -10706,6 +10744,8 @@ export default function Dashboard() {
               similarity: chunkMap.get(m.document_id)?.score ?? m.similarity,
               chunk_text: m.chunk_text,
               parent_text: m.parent_text,
+              document_created_at: m.document_created_at ?? undefined,
+              event_created_at: m.event_created_at ?? undefined,
             }));
 
           if (!useGraphRAG) {
@@ -13364,6 +13404,7 @@ export default function Dashboard() {
                           onClick={() => handleOpenDocument(doc.id)}
                         >
                           {index + 1}. {doc.title || doc.file_name || "Untitled"}
+                          {doc.created_at ? ` (${new Date(doc.created_at).toLocaleDateString("en-US", { month: "short", year: "numeric" })})` : ""}
                         </Button>
                       ))}
                     </div>

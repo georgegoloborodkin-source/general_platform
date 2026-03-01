@@ -8360,9 +8360,13 @@ async def _agent_search_documents(tool_input: dict, event_id: str) -> str:
         doc = doc_map.get(chunk.get("document_id", ""), {})
         title = doc.get("title") or doc.get("file_name") or "Unknown document"
         similarity = chunk.get("similarity", 0)
+        doc_created = chunk.get("document_created_at")
+        date_str = ""
+        if doc_created and len(str(doc_created)) >= 10:
+            date_str = f", document date: {str(doc_created)[:10]}"
         text = chunk.get("parent_text") or chunk.get("chunk_text") or ""
         text = text[:600]
-        lines.append(f"[{i}] **{title}** (relevance: {similarity:.2f})\n{text}")
+        lines.append(f"[{i}] **{title}** (relevance: {similarity:.2f}{date_str})\n{text}")
 
     return "\n\n".join(lines)
 
