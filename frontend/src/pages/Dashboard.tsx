@@ -4950,6 +4950,7 @@ function DashboardTab({
   decisions,
   documents,
   sources,
+  sourceFolders,
   companyCards,
 }: {
   profile: UserProfile | null;
@@ -4960,6 +4961,7 @@ function DashboardTab({
   decisions: Decision[];
   documents: Array<{ id: string; title: string | null; storage_path: string | null }>;
   sources: SourceRecord[];
+  sourceFolders: SourceFolder[];
   companyCards: Array<{ company_id: string; company_name: string; entity_type?: string; company_properties: Record<string, any>; document_count: number }>;
 }) {
   const { toast } = useToast();
@@ -13601,6 +13603,7 @@ export default function Dashboard() {
               decisions={decisions}
               documents={documents}
               sources={sources}
+              sourceFolders={sourceFolders}
               companyCards={companyCards}
             />
           </TabsContent>
