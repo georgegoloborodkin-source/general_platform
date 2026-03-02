@@ -6089,7 +6089,7 @@ function OnboardingTab({
       title: "Review analytics",
       status: decisions.length >= 5,
       description: "Unlock Decision Engine analytics with at least 5 decisions (MD only).",
-      action: () => onNavigate("dashboard"),
+      action: () => onNavigate("overview"),
       actionLabel: "Open Decision Engine",
     },
   ];
@@ -13115,6 +13115,16 @@ export default function Dashboard() {
           {/* Main Content Area */}
           <div className="flex-1 min-w-0 cis-fade-in-up cis-stagger-4 opacity-0 [animation-fill-mode:forwards]">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          {/* Hidden triggers so Radix correctly shows content when nav buttons set activeTab (e.g. Dashboard → overview) */}
+          <TabsList className="sr-only h-0 p-0 overflow-hidden border-0">
+            <TabsTrigger value="chat" />
+            <TabsTrigger value="onboarding" />
+            <TabsTrigger value="admin" />
+            <TabsTrigger value="overview" />
+            <TabsTrigger value="sources" />
+            <TabsTrigger value="decisions" />
+            <TabsTrigger value="account" />
+          </TabsList>
 
           {/* Onboarding Tab */}
           <TabsContent value="onboarding">
