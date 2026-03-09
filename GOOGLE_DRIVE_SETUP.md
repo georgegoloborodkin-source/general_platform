@@ -90,6 +90,7 @@ In the backend service → **Environment** → **Environment Variables**, set:
 | `GOOGLE_CLIENT_ID`      | Same OAuth client ID as above                                         |
 | `GOOGLE_CLIENT_SECRET`  | The **new** client secret you created                                |
 | `BACKEND_PUBLIC_URL`    | `https://general-platform.onrender.com` (optional; this is the default) |
+| `GEMINI_API_KEY`        | (Optional) Enables AI-powered email normalization for Gmail sync; improves RAG quality |
 
 Save and redeploy the backend.
 

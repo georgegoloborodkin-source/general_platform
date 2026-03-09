@@ -12,7 +12,7 @@ export default function Onboarding() {
 
   const handleComplete = async (_orgId: string) => {
     await refreshProfile();
-    navigate("/", { replace: true });
+    navigate("/dashboard", { replace: true });
   };
 
   if (!user) return null;

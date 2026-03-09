@@ -51,7 +51,7 @@ export default function AuthCallback() {
               toast({ title: "Successfully signed in!", description: "Welcome to the platform." });
               await new Promise((r) => setTimeout(r, 200));
               const hasOrg = !!existingProfile?.organization_id;
-              navigate(hasOrg ? "/" : "/onboarding", { replace: true });
+              navigate(hasOrg ? "/dashboard" : "/onboarding", { replace: true });
               return;
             }
           }
@@ -117,7 +117,7 @@ export default function AuthCallback() {
 
         await new Promise((resolve) => setTimeout(resolve, 200));
         const hasOrg = !!profile?.organization_id;
-        navigate(hasOrg ? "/" : "/onboarding", { replace: true });
+        navigate(hasOrg ? "/dashboard" : "/onboarding", { replace: true });
       } catch (error: any) {
         console.error("Auth callback error:", error);
         toast({

@@ -39,3 +39,6 @@ supabase>=2.0.0
 # ── Optional: legacy local model support ──
 ollama>=0.3.0
 openai>=1.0.0
+
+# ── Optional: Google Gemini for Gmail email parsing ──
+google-genai>=1.0.0

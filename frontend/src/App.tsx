@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
+import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import AuthCallback from "./pages/AuthCallback";
 import Onboarding from "./pages/Onboarding";
@@ -52,8 +53,9 @@ const App = () => {
         <BrowserRouter>
           <div className="app-shell cis-grid-bg cis-mesh-bg">
             <Routes>
+              <Route path="/" element={<Landing />} />
               <Route
-                path="/"
+                path="/dashboard"
                 element={
                   <ProtectedRoute requireAuth>
                     <Dashboard />

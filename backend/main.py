@@ -75,6 +75,16 @@ try:
 except ImportError:
     _supabase_available = False
 
+# Optional: Google Gemini for email parsing (improves Gmail ingestion when GEMINI_API_KEY set)
+try:
+    from google import genai as _genai_module
+    from google.genai import types as _genai_types
+    _gemini_sdk_available = True
+except ImportError:
+    _genai_module = None
+    _genai_types = None
+    _gemini_sdk_available = False
+
 app = FastAPI(
     title="Company Second Brain V2 API",
     default_response_class=ORJSONResponse,
@@ -478,6 +488,10 @@ ANTHROPIC_MODEL_FALLBACKS = [
 # ---------------------------------------------------------------------------
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+
+# Optional: Gemini for Gmail email parsing (normalizes content for RAG). Set GEMINI_API_KEY to enable.
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip() or None
+GEMINI_EMAIL_MODEL = os.getenv("GEMINI_EMAIL_MODEL", "gemini-2.0-flash")
 
 _sb_client = None
 
@@ -7699,6 +7713,61 @@ async def gdrive_download_file(request: GDriveDownloadFileRequest):
 GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me"
 
 
+def _get_gemini_client():
+    """Return Gemini async client. Requires GEMINI_API_KEY and google-genai installed."""
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=503, detail="GEMINI_API_KEY not set.")
+    if not _gemini_sdk_available or _genai_module is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Google Gemini SDK not installed. Run: pip install google-genai",
+        )
+    return _genai_module.Client(api_key=GEMINI_API_KEY)
+
+
+def _gemini_email_config():
+    """Config for email parsing (low token, deterministic)."""
+    if _genai_types is not None:
+        return _genai_types.GenerateContentConfig(
+            max_output_tokens=16384,
+            temperature=0.0,
+        )
+    return {"max_output_tokens": 16384, "temperature": 0.0}
+
+
+async def _parse_email_with_gemini(raw_email_text: str) -> str:
+    """
+    Use Gemini to parse and normalize email content for accurate extraction.
+    Returns cleaned, structured text suitable for RAG and display.
+    """
+    if not raw_email_text or not raw_email_text.strip():
+        return raw_email_text
+    client = _get_gemini_client()
+    aio = client.aio
+    try:
+        system = (
+            "You are an email parsing assistant. Your task is to normalize and clean the raw email content. "
+            "Preserve: From, To, Cc, Date, Subject, and the full body text. "
+            "Strip HTML tags and decode any broken or quoted-printable text. "
+            "Keep signatures and quoted replies but mark them clearly if needed. "
+            "Output ONLY the cleaned email text, no commentary or meta-description."
+        )
+        contents = system + "\n\n---\n\n" + (raw_email_text[:120000] if len(raw_email_text) > 120000 else raw_email_text)
+        config = _gemini_email_config()
+        response = await aio.models.generate_content(
+            model=GEMINI_EMAIL_MODEL,
+            contents=contents,
+            config=config,
+        )
+        if response.text and response.text.strip():
+            return response.text.strip()
+        return raw_email_text
+    except Exception:
+        return raw_email_text
+    finally:
+        await aio.aclose()
+
+
 def _parse_gmail_headers(headers: List[Dict[str, str]]) -> Dict[str, str]:
     """Extract useful headers from Gmail message payload."""
     out: Dict[str, str] = {}
@@ -7900,6 +7969,13 @@ async def ingest_gmail(request: GmailIngestRequest):
 
     content = f"{header_block}\n{body}"
     title = f"[Email] {subject}"
+
+    # Use Gemini to normalize email content when configured (improves RAG quality)
+    if GEMINI_API_KEY and _gemini_sdk_available:
+        try:
+            content = await _parse_email_with_gemini(content)
+        except Exception:
+            pass  # keep original content on any error
 
     return GmailIngestResponse(
         title=title,
